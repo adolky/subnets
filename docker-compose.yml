@@ -1,0 +1,35 @@
+# Subnet Calculator - Docker Compose Configuration
+version: '3.8'
+
+services:
+  subnet-calculator:
+    build: .
+    container_name: subnet-calculator
+    ports:
+      - "8080:80"
+    volumes:
+      # Persist database data
+      - subnet_data:/var/www/html/data
+      # Mount database file for persistence (optional)
+      - ./subnets.db:/var/www/html/subnets.db
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/subnets.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.subnet-calculator.rule=Host(`subnet-calculator.local`)"
+      - "traefik.http.services.subnet-calculator.loadbalancer.server.port=80"
+
+volumes:
+  subnet_data:
+    driver: local
+
+networks:
+  default:
+    name: subnet-calculator-network

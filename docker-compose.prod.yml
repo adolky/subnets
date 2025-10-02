@@ -1,0 +1,47 @@
+# Subnet Calculator - Production Docker Compose
+version: '3.8'
+
+services:
+  subnet-calculator:
+    build: .
+    container_name: subnet-calculator-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - subnet_data:/var/www/html/data
+      - ./subnets.db:/var/www/html/subnets.db
+      # SSL certificates (optional)
+      - ./ssl:/etc/ssl/certs:ro
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html
+      - SERVER_NAME=${SERVER_NAME:-subnet-calculator.local}
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/subnets.html"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    labels:
+      - "com.subnet-calculator.version=1.0"
+      - "com.subnet-calculator.description=Advanced Subnet Calculator"
+
+volumes:
+  subnet_data:
+    driver: local
+
+networks:
+  default:
+    name: subnet-calculator-prod-network
