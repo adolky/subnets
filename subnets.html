@@ -10,12 +10,22 @@ var visibleColumns = {
   range: true,
   useable: true,
   hosts: true,
+  vlanname: true,
   divide: true,
   join: true,
 };
 
 var curNetwork = 0;
 var curMask = 0;
+
+// Current loaded configuration state
+var currentConfig = {
+  id: null,
+  siteName: '',
+  adminNumber: '',
+  networkAddress: '',
+  isLoaded: false
+};
 
 function updateNetwork()
 {
@@ -54,6 +64,15 @@ function updateNetwork()
   }
   else {
     document.forms['calc'].elements['netbits'].value = curMask;
+    
+    // If network changed, reset config state
+    if (curNetwork != newNetwork && currentConfig.isLoaded) {
+      const currentNetworkStr = inet_ntoa(curNetwork) + '/' + curMask;
+      if (currentNetworkStr !== currentConfig.networkAddress) {
+        resetCurrentConfig();
+      }
+    }
+    
     curNetwork = newNetwork;
 
     recreateTables();
@@ -62,7 +81,10 @@ function updateNetwork()
 
 function startOver()
 {
-  rootSubnet = [0, 0, null];
+  rootSubnet = [0, 0, null, ''];
+
+  // Reset loaded configuration state
+  resetCurrentConfig();
 
   recreateTables();
 }
@@ -96,7 +118,12 @@ function recreateTables()
   /* Create the bookmark hyperlink */
   var link = document.getElementById('saveLink');
   if (link) {
-    link.href = 'subnets.html?network='+inet_ntoa(curNetwork)+'&mask='+curMask+'&division='+binToAscii(nodeToString(rootSubnet));
+    var vlanNames = vlanNamesToString(rootSubnet, curNetwork, curMask);
+    var url = 'subnets.html?network='+inet_ntoa(curNetwork)+'&mask='+curMask+'&division='+binToAscii(nodeToString(rootSubnet));
+    if (vlanNames) {
+      url += '&vlans=' + encodeURIComponent(vlanNames);
+    }
+    link.href = url;
   }
 }
 
@@ -108,6 +135,55 @@ function nodeToString(node)
   else {
     return '0';
   }
+}
+
+function vlanNamesToString(node, address, mask)
+{
+  var result = '';
+  if (node[3]) {
+    result += inet_ntoa(address) + '/' + mask + ':' + encodeURIComponent(node[3]) + ';';
+  }
+  if (node[2]) {
+    result += vlanNamesToString(node[2][0], address, mask+1);
+    result += vlanNamesToString(node[2][1], address+subnet_addresses(mask+1), mask+1);
+  }
+  return result;
+}
+
+function loadVlanNames(vlanStr, node, address, mask)
+{
+  if (!vlanStr) return;
+  
+  var vlans = vlanStr.split(';');
+  for (var i = 0; i < vlans.length; i++) {
+    if (vlans[i]) {
+      var parts = vlans[i].split(':');
+      if (parts.length >= 2) {
+        var subnet = parts[0];
+        var vlanName = decodeURIComponent(parts[1]);
+        setVlanForSubnet(node, address, mask, subnet, vlanName);
+      }
+    }
+  }
+}
+
+function setVlanForSubnet(node, address, mask, targetSubnet, vlanName)
+{
+  var currentSubnet = inet_ntoa(address) + '/' + mask;
+  if (currentSubnet === targetSubnet) {
+    node[3] = vlanName;
+    return true;
+  }
+  
+  if (node[2]) {
+    if (setVlanForSubnet(node[2][0], address, mask+1, targetSubnet, vlanName)) {
+      return true;
+    }
+    if (setVlanForSubnet(node[2][1], address+subnet_addresses(mask+1), mask+1, targetSubnet, vlanName)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function binToAscii(str)
@@ -227,6 +303,19 @@ function createRow(calcbody, node, address, mask, labels, depth)
       newRow.appendChild(newCell);
     }
 
+    /* VLAN Name */
+    if (visibleColumns.vlanname) {
+      var newCell = document.createElement('TD');
+      var vlanInput = document.createElement('INPUT');
+      vlanInput.type = 'text';
+      vlanInput.value = node[3] || '';
+      vlanInput.placeholder = 'VLAN Name';
+      vlanInput.className = 'vlan-input';
+      vlanInput.onchange = function() { updateVlanName(node, this.value); };
+      newCell.appendChild(vlanInput);
+      newRow.appendChild(newCell);
+    }
+
     /* actions */
 
     if (visibleColumns.divide) {
@@ -290,8 +379,8 @@ function newJoin(joinnode)
 function divide(node)
 {
   node[2] = new Array();
-  node[2][0] = [0, 0, null];
-  node[2][1] = [0, 0, null];
+  node[2][0] = [0, 0, null, ''];
+  node[2][1] = [0, 0, null, ''];
   recreateTables();
 }
 
@@ -300,6 +389,11 @@ function join(node)
   /* easy as pie */
   node[2] = null;
   recreateTables();
+}
+
+function updateVlanName(node, vlanName)
+{
+  node[3] = vlanName;
 }
 
 function updateNumChildren(node)
@@ -409,9 +503,12 @@ function calcOnLoad()
     document.forms['calc'].elements['netbits'].value = args['mask'];
     updateNetwork();
     var division = asciiToBin(args['division']);
-    rootSubnet = [0, 0, null];
+    rootSubnet = [0, 0, null, ''];
     if (division != '0') {
       loadNode(rootSubnet, division);
+    }
+    if (args['vlans']) {
+      loadVlanNames(decodeURIComponent(args['vlans']), rootSubnet, curNetwork, curMask);
     }
     recreateTables();
   }
@@ -427,8 +524,8 @@ function loadNode(curNode, division)
   }
   else {
     curNode[2] = new Array();
-    curNode[2][0] = [0, 0, null];
-    curNode[2][1] = [0, 0, null];
+    curNode[2][0] = [0, 0, null, ''];
+    curNode[2][1] = [0, 0, null, ''];
 
     division = loadNode(curNode[2][0], division.substr(1));
     division = loadNode(curNode[2][1], division);
@@ -455,6 +552,507 @@ function parseQueryString (str)
 
 window.onload = calcOnLoad;
 
+// Database save/load functions
+function showSaveDialog() {
+  if (!curNetwork || !curMask) {
+    alert('Please enter and update a network first');
+    return;
+  }
+  
+  const modal = document.getElementById('saveModal');
+  const modalHeader = modal.querySelector('.modal-header');
+  const siteNameField = document.getElementById('siteName');
+  const adminNumberField = document.getElementById('adminNumber');
+  const networkAddressField = document.getElementById('networkAddress');
+  const submitButton = modal.querySelector('button[type="submit"]');
+  
+  // Pre-fill the network address field
+  networkAddressField.value = inet_ntoa(curNetwork) + '/' + curMask;
+  
+  if (currentConfig.isLoaded) {
+    // Update mode - pre-fill and disable fields
+    modalHeader.textContent = 'Update Configuration';
+    siteNameField.value = currentConfig.siteName;
+    adminNumberField.value = currentConfig.adminNumber;
+    
+    // Disable fields in update mode
+    siteNameField.disabled = true;
+    adminNumberField.disabled = true;
+    networkAddressField.disabled = true;
+    
+    // Add styling to show disabled state
+    siteNameField.style.backgroundColor = '#f5f5f5';
+    adminNumberField.style.backgroundColor = '#f5f5f5';
+    networkAddressField.style.backgroundColor = '#f5f5f5';
+    
+    submitButton.textContent = 'Update Configuration';
+    
+    // Focus on the first enabled element (which would be the close button area)
+    submitButton.focus();
+  } else {
+    // New save mode - enable fields and clear
+    modalHeader.textContent = 'Save Subnet Configuration';
+    siteNameField.value = '';
+    adminNumberField.value = '';
+    
+    // Enable fields for new save
+    siteNameField.disabled = false;
+    adminNumberField.disabled = false;
+    networkAddressField.disabled = true; // This stays disabled as it's auto-filled
+    
+    // Remove styling
+    siteNameField.style.backgroundColor = '';
+    adminNumberField.style.backgroundColor = '';
+    
+    submitButton.textContent = 'Save Configuration';
+    
+    siteNameField.focus();
+  }
+  
+  modal.style.display = 'block';
+}
+
+function hideSaveDialog() {
+  const modal = document.getElementById('saveModal');
+  
+  // Reset field states
+  const siteNameField = document.getElementById('siteName');
+  const adminNumberField = document.getElementById('adminNumber');
+  const networkAddressField = document.getElementById('networkAddress');
+  
+  siteNameField.disabled = false;
+  adminNumberField.disabled = false;
+  siteNameField.style.backgroundColor = '';
+  adminNumberField.style.backgroundColor = '';
+  networkAddressField.style.backgroundColor = '';
+  
+  modal.style.display = 'none';
+  document.getElementById('saveForm').reset();
+  document.getElementById('saveStatus').style.display = 'none';
+}
+
+function showLoadDialog() {
+  document.getElementById('loadModal').style.display = 'block';
+  loadConfigurationList();
+  
+  // Focus the search input after a brief delay to ensure modal is fully rendered
+  setTimeout(() => {
+    const searchInput = document.getElementById('configSearch');
+    if (searchInput) {
+      searchInput.focus();
+    }
+  }, 100);
+}
+
+function hideLoadDialog() {
+  document.getElementById('loadModal').style.display = 'none';
+}
+
+function saveToDatabase(event) {
+  event.preventDefault();
+  
+  let siteName, adminNumber, networkAddress;
+  
+  if (currentConfig.isLoaded) {
+    // Update mode - use stored values
+    siteName = currentConfig.siteName;
+    adminNumber = currentConfig.adminNumber;
+    networkAddress = currentConfig.networkAddress;
+  } else {
+    // New save mode - get from form
+    siteName = document.getElementById('siteName').value.trim();
+    adminNumber = document.getElementById('adminNumber').value.trim();
+    networkAddress = document.getElementById('networkAddress').value.trim();
+    
+    if (!siteName || !adminNumber || !networkAddress) {
+      showSaveStatus('Please fill in all required fields', 'error');
+      return;
+    }
+    
+    // Validate network address format
+    const networkPattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
+    if (!networkPattern.test(networkAddress)) {
+      showSaveStatus('Invalid network address format. Use x.x.x.x/x', 'error');
+      return;
+    }
+  }
+  
+  const vlanNames = vlanNamesToString(rootSubnet, curNetwork, curMask);
+  const divisionData = binToAscii(nodeToString(rootSubnet));
+  
+  const data = {
+    siteName: siteName,
+    adminNumber: adminNumber,
+    networkAddress: networkAddress,
+    maskBits: curMask,
+    divisionData: divisionData,
+    vlanNames: vlanNames
+  };
+  
+  // Add ID for updates
+  if (currentConfig.isLoaded) {
+    data.configId = currentConfig.id;
+  }
+  
+  const statusMessage = currentConfig.isLoaded ? 'Updating configuration...' : 'Saving configuration...';
+  showSaveStatus(statusMessage, 'info');
+  
+  fetch('api.php?action=save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  })
+  .then(response => response.json())
+  .then(result => {
+    if (result.success) {
+      showSaveStatus(result.message, 'success');
+      
+      // If this was a new save, update the current config state
+      if (!currentConfig.isLoaded) {
+        currentConfig = {
+          id: result.data?.id || null, // API should return the ID
+          siteName: siteName,
+          adminNumber: adminNumber,
+          networkAddress: networkAddress,
+          isLoaded: true
+        };
+        updateUIForLoadedConfig();
+      }
+      
+      setTimeout(() => {
+        hideSaveDialog();
+      }, 2000);
+    } else {
+      showSaveStatus(result.message, 'error');
+    }
+  })
+  .catch(error => {
+    showSaveStatus('Error saving configuration: ' + error.message, 'error');
+  });
+}
+
+function showSaveStatus(message, type) {
+  const statusDiv = document.getElementById('saveStatus');
+  statusDiv.textContent = message;
+  statusDiv.style.display = 'block';
+  statusDiv.style.color = type === 'error' ? '#d32f2f' : (type === 'success' ? '#388e3c' : '#1976d2');
+}
+
+// Global variables for search functionality
+let allConfigurations = [];
+let filteredConfigurations = [];
+
+function loadConfigurationList() {
+  document.getElementById('configList').innerHTML = 'Loading saved configurations...';
+  
+  fetch('api.php?action=list')
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        allConfigurations = result.data;
+        filteredConfigurations = [...allConfigurations];
+        displayConfigurationList(filteredConfigurations);
+      } else {
+        document.getElementById('configList').innerHTML = 'Error loading configurations: ' + result.message;
+      }
+    })
+    .catch(error => {
+      document.getElementById('configList').innerHTML = 'Error loading configurations: ' + error.message;
+    });
+}
+
+function displayConfigurationList(configurations) {
+  const configList = document.getElementById('configList');
+  const searchTerm = document.getElementById('configSearch').value.toLowerCase().trim();
+  
+  if (configurations.length === 0) {
+    if (allConfigurations.length === 0) {
+      configList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No saved configurations found.</div>';
+    } else {
+      configList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No configurations match your search. <button onclick="clearSearch()" style="color: #2196F3; text-decoration: underline; background: none; border: none; cursor: pointer;">Clear search</button></div>';
+    }
+    return;
+  }
+  
+  let html = '<table style="width: 100%; border-collapse: collapse;">';
+  html += '<thead><tr style="background-color: #f5f5f5;">';
+  html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Site Name</th>';
+  html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Admin #</th>';
+  html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Network</th>';
+  html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Updated</th>';
+  html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Actions</th>';
+  html += '</tr></thead><tbody>';
+  
+  configurations.forEach(config => {
+    const updatedDate = new Date(config.updated_at).toLocaleDateString();
+    
+    // Apply highlighting to search results
+    const siteName = highlightSearchMatch(escapeHtml(config.site_name), searchTerm);
+    const adminNumber = highlightSearchMatch(escapeHtml(config.admin_number), searchTerm);
+    const networkAddress = highlightSearchMatch(escapeHtml(config.network_address), searchTerm);
+    
+    html += '<tr>';
+    html += `<td style="padding: 8px; border: 1px solid #ddd;">${siteName}</td>`;
+    html += `<td style="padding: 8px; border: 1px solid #ddd;">${adminNumber}</td>`;
+    html += `<td style="padding: 8px; border: 1px solid #ddd;">${networkAddress}</td>`;
+    html += `<td style="padding: 8px; border: 1px solid #ddd;">${updatedDate}</td>`;
+    html += `<td style="padding: 8px; border: 1px solid #ddd; text-align: center;">`;
+    html += `<button onclick="loadConfiguration(${config.id})" style="margin-right: 5px; padding: 4px 8px; font-size: 12px;">Load</button>`;
+    html += `<button onclick="deleteConfiguration(${config.id})" style="padding: 4px 8px; font-size: 12px; background-color: #f44336; color: white; border: none;">Delete</button>`;
+    html += `</td></tr>`;
+  });
+  
+  html += '</tbody></table>';
+  configList.innerHTML = html;
+}
+
+// Helper function for highlighting search matches
+function highlightSearchMatch(text, searchTerm) {
+  if (!searchTerm || !text) return text;
+  
+  const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return text.replace(regex, '<mark style="background-color: #ffeb3b; padding: 1px 2px;">$1</mark>');
+}
+
+// Search functionality
+function searchConfigurations(searchTerm) {
+  const clearBtn = document.getElementById('clearSearchBtn');
+  const resultInfo = document.getElementById('searchResultInfo');
+  const resultCount = document.getElementById('searchResultCount');
+  
+  // Show/hide clear button
+  if (searchTerm.length > 0) {
+    clearBtn.style.display = 'block';
+  } else {
+    clearBtn.style.display = 'none';
+  }
+  
+  // Filter configurations
+  if (searchTerm.trim() === '') {
+    filteredConfigurations = [...allConfigurations];
+    resultInfo.style.display = 'none';
+  } else {
+    filteredConfigurations = performAdvancedSearch(searchTerm);
+    
+    // Show search result info with more details
+    resultInfo.style.display = 'block';
+    const matchText = filteredConfigurations.length === 1 ? 'configuration' : 'configurations';
+    resultCount.textContent = `Found ${filteredConfigurations.length} ${matchText} of ${allConfigurations.length} total`;
+  }
+  
+  // Re-render the configuration list
+  displayConfigurationList(filteredConfigurations);
+}
+
+// Advanced search with multiple terms and weighted results
+function performAdvancedSearch(searchTerm) {
+  const terms = searchTerm.toLowerCase().trim().split(/\s+/); // Split by whitespace
+  
+  return allConfigurations.filter(config => {
+    const searchFields = {
+      // Primary fields (higher priority)
+      network_address: config.network_address || '',
+      admin_number: config.admin_number || '',
+      site_name: config.site_name || '',
+      
+      // Secondary fields
+      location: config.location || '',
+      description: config.description || '',
+      vlan_names: config.vlan_names || ''
+    };
+    
+    // Check if ALL search terms match somewhere in the configuration
+    return terms.every(term => {
+      if (term === '') return true;
+      
+      // Special handling for IP addresses and CIDR notation
+      if (term.includes('/') || term.match(/^\d+\.\d+/)) {
+        return searchFields.network_address.toLowerCase().includes(term);
+      }
+      
+      // Special handling for numeric admin IDs
+      if (term.match(/^\d+$/)) {
+        return searchFields.admin_number.toLowerCase().includes(term) ||
+               searchFields.network_address.toLowerCase().includes(term);
+      }
+      
+      // General text search across all fields
+      return Object.values(searchFields).some(field => 
+        field.toLowerCase().includes(term)
+      );
+    });
+  });
+}
+
+// Keyboard shortcuts for search
+function handleSearchKeydown(event) {
+  if (event.key === 'Escape') {
+    clearSearch();
+    event.preventDefault();
+  } else if (event.key === 'Enter') {
+    // Enter key - focus first configuration if any results
+    if (filteredConfigurations.length > 0) {
+      const firstLoadButton = document.querySelector('button[onclick^="loadConfiguration"]');
+      if (firstLoadButton) {
+        firstLoadButton.focus();
+      }
+    }
+    event.preventDefault();
+  }
+}
+
+// Enhanced clear search with animation
+function clearSearch() {
+  const searchInput = document.getElementById('configSearch');
+  const clearBtn = document.getElementById('clearSearchBtn');
+  const resultInfo = document.getElementById('searchResultInfo');
+  
+  // Add a small animation effect
+  searchInput.style.transition = 'background-color 0.2s';
+  searchInput.style.backgroundColor = '#f0f8ff';
+  
+  setTimeout(() => {
+    searchInput.style.backgroundColor = '';
+  }, 200);
+  
+  searchInput.value = '';
+  clearBtn.style.display = 'none';
+  resultInfo.style.display = 'none';
+  filteredConfigurations = [...allConfigurations];
+  displayConfigurationList(filteredConfigurations);
+  
+  // Focus back to search input
+  searchInput.focus();
+}
+
+function loadConfiguration(configId) {
+  fetch(`api.php?action=load&id=${configId}`)
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        const config = result.data;
+        
+        // Parse network address
+        const networkParts = config.network_address.split('/');
+        const networkAddr = networkParts[0];
+        const maskBits = parseInt(networkParts[1]);
+        
+        // Update form fields
+        document.forms['calc'].elements['network'].value = networkAddr;
+        document.forms['calc'].elements['netbits'].value = maskBits;
+        
+        // Update network
+        updateNetwork();
+        
+        // Load division data
+        if (config.division_data && config.division_data !== '1.0') {
+          const division = asciiToBin(config.division_data);
+          rootSubnet = [0, 0, null, ''];
+          if (division !== '0') {
+            loadNode(rootSubnet, division);
+          }
+        }
+        
+        // Load VLAN names
+        if (config.vlan_names) {
+          loadVlanNames(config.vlan_names, rootSubnet, curNetwork, curMask);
+        }
+        
+        recreateTables();
+        hideLoadDialog();
+        
+        // Store the loaded configuration info for future updates
+        currentConfig = {
+          id: config.id,
+          siteName: config.site_name,
+          adminNumber: config.admin_number,
+          networkAddress: config.network_address,
+          isLoaded: true
+        };
+        
+        // Update the UI to show we're working with a loaded configuration
+        updateUIForLoadedConfig();
+        
+        alert(`Configuration "${config.site_name}" loaded successfully!`);
+      } else {
+        alert('Error loading configuration: ' + result.message);
+      }
+    })
+    .catch(error => {
+      alert('Error loading configuration: ' + error.message);
+    });
+}
+
+function deleteConfiguration(configId) {
+  if (!confirm('Are you sure you want to delete this configuration?')) {
+    return;
+  }
+  
+  fetch('api.php?action=delete', {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id: configId })
+  })
+  .then(response => response.json())
+  .then(result => {
+    if (result.success) {
+      loadConfigurationList(); // Refresh the list
+    } else {
+      alert('Error deleting configuration: ' + result.message);
+    }
+  })
+  .catch(error => {
+    alert('Error deleting configuration: ' + error.message);
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function resetCurrentConfig() {
+  currentConfig = {
+    id: null,
+    siteName: '',
+    adminNumber: '',
+    networkAddress: '',
+    isLoaded: false
+  };
+  updateUIForLoadedConfig();
+}
+
+function updateUIForLoadedConfig() {
+  const saveLink = document.getElementById('saveToDbLink');
+  const configInfo = document.getElementById('currentConfigInfo');
+  const configInfoText = document.getElementById('configInfoText');
+  
+  if (currentConfig.isLoaded) {
+    saveLink.textContent = 'Update Configuration';
+    saveLink.title = `Update "${currentConfig.siteName}" configuration`;
+    
+    // Show configuration info
+    configInfoText.textContent = `Site: "${currentConfig.siteName}" | Admin: "${currentConfig.adminNumber}" | Network: ${currentConfig.networkAddress}`;
+    configInfo.style.display = 'block';
+  } else {
+    saveLink.textContent = 'Save to Database';
+    saveLink.title = 'Save new configuration to database';
+    
+    // Hide configuration info
+    configInfo.style.display = 'none';
+  }
+}
+
+// Attach save form handler
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('saveForm').addEventListener('submit', saveToDatabase);
+});
+
 function toggleColumn(cb)
 {
   var colName = 'col_'+(cb.id.substr(3));
@@ -471,6 +1069,315 @@ function toggleColumn(cb)
 //    col.style.visibility = 'collapse';
 //  }
   recreateTables(); /* because IE draws lines all over the place with border-collapse */
+}
+
+// Intelligent IP Address Search Functions
+function handleIPInput(ipAddress) {
+  const resultElement = document.getElementById('ipSearchResult');
+  
+  // Clear previous results
+  resultElement.textContent = '';
+  resultElement.style.color = '#666';
+  
+  if (!ipAddress || ipAddress.trim() === '') {
+    return;
+  }
+  
+  // Show real-time validation
+  if (!isValidIPAddress(ipAddress.trim())) {
+    if (ipAddress.trim().length > 6) { // Only show error if user has typed enough
+      resultElement.textContent = 'Invalid IP format';
+      resultElement.style.color = '#f44336';
+    }
+    return;
+  }
+  
+  // Show that IP is valid and ready to search
+  resultElement.textContent = 'Valid IP - press Enter or click Search';
+  resultElement.style.color = '#2196F3';
+}
+
+function isValidIPAddress(ip) {
+  const pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = ip.match(pattern);
+  
+  if (!match) return false;
+  
+  // Check if each octet is between 0-255
+  for (let i = 1; i <= 4; i++) {
+    const octet = parseInt(match[i]);
+    if (octet < 0 || octet > 255) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+// Utility functions for IP validation and conversion
+function ipToLong(ip) {
+  const parts = ip.split('.');
+  return (parseInt(parts[0]) << 24 | parseInt(parts[1]) << 16 | parseInt(parts[2]) << 8 | parseInt(parts[3])) >>> 0;
+}
+
+function clearIPSearch() {
+  document.getElementById('ipSearchField').value = '';
+  document.getElementById('ipSearchResult').textContent = '';
+  closeIntelligentSearchModal();
+}
+
+// Intelligent Database IP Search Functions
+function searchIPInDatabase() {
+  const ipField = document.getElementById('ipSearchField');
+  const resultElement = document.getElementById('ipSearchResult');
+  const ip = ipField.value.trim();
+  
+  if (!ip) {
+    resultElement.textContent = '🔍 Please enter an IP address to search';
+    resultElement.style.color = '#ff9800';
+    ipField.focus();
+    return;
+  }
+  
+  // Validate IP address format
+  if (!isValidIPAddress(ip)) {
+    resultElement.textContent = '❌ Invalid IP address format';
+    resultElement.style.color = '#f44336';
+    return;
+  }
+  
+  resultElement.textContent = '🔍 Searching across all configurations...';
+  resultElement.style.color = '#2196F3';
+  
+  // Make API call to search IP in database
+  fetch(`api.php?action=searchIP&ip=${encodeURIComponent(ip)}`)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Search results:', data);
+      
+      if (data.success) {
+        if (data.data && data.data.length > 0) {
+          showIntelligentSearchResults(ip, data.data);
+          const count = data.data.length;
+          const configs = count === 1 ? 'configuration' : 'configurations';
+          resultElement.innerHTML = `✅ Found in <strong>${count}</strong> saved ${configs}`;
+          resultElement.style.color = '#4CAF50';
+        } else {
+          resultElement.innerHTML = '🔍 IP not found in any saved subnet configurations';
+          resultElement.style.color = '#ff9800';
+          showNoResultsMessage(ip);
+        }
+      } else {
+        resultElement.textContent = `❌ ${data.message}`;
+        resultElement.style.color = '#f44336';
+      }
+    })
+    .catch(error => {
+      console.error('Intelligent search error:', error);
+      resultElement.textContent = '❌ Search service unavailable';
+      resultElement.style.color = '#f44336';
+    });
+}
+
+function showIntelligentSearchResults(ip, results) {
+  // Create modal for displaying results
+  let modal = document.getElementById('intelligentSearchModal');
+  if (!modal) {
+    modal = createIntelligentSearchModal();
+  }
+  
+  const modalBody = modal.querySelector('.intelligent-modal-body');
+  const modalTitle = modal.querySelector('.intelligent-modal-title');
+  
+  modalTitle.innerHTML = `🎯 IP Address Analysis: <span style="color: #4CAF50;">${ip}</span>`;
+  
+  // Sort results by creation date (newest first)
+  results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  
+  let html = '';
+  
+  if (results.length === 1) {
+    const result = results[0];
+    html += `
+      <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 20px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 15px 0; color: #2e7d32;">✅ Perfect Match Found!</h4>
+        <div style="display: grid; grid-template-columns: auto 1fr; gap: 15px; align-items: center;">
+          <div>
+            <div style="font-size: 24px; color: #4CAF50; font-weight: bold;">${result.subnet}</div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">Subnet containing your IP</div>
+          </div>
+          <div>
+            <div style="font-size: 18px; font-weight: bold; color: #1976d2; margin-bottom: 8px;">${result.siteName}</div>
+            <div style="color: #666;"><strong>Admin:</strong> ${result.adminNumber} | <strong>Network:</strong> ${result.networkAddress}</div>
+            ${result.vlanName ? `<div style="color: #666; margin-top: 5px;"><strong>VLAN:</strong> ${result.vlanName}</div>` : ''}
+          </div>
+        </div>
+        <div style="margin-top: 15px; text-align: center;">
+          <button onclick="loadConfiguration(${result.configId}); closeIntelligentSearchModal();" 
+                  style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
+            🚀 Load This Configuration
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); padding: 15px; border-radius: 8px; border-left: 5px solid #ff9800; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 10px 0; color: #ef6c00;">⚠️ Multiple Matches Detected</h4>
+        <p style="margin: 0; color: #666;">The IP address <strong>${ip}</strong> appears in <strong>${results.length} different configurations</strong>. This might indicate overlapping subnet designs.</p>
+      </div>
+    `;
+    
+    results.forEach((result, index) => {
+      const isNewest = index === 0;
+      html += `
+        <div style="border: 2px solid ${isNewest ? '#4CAF50' : '#ddd'}; padding: 15px; margin: 15px 0; border-radius: 8px; background: ${isNewest ? '#f8fff8' : '#f8f9fa'}; position: relative;">
+          ${isNewest ? '<div style="position: absolute; top: -10px; right: 15px; background: #4CAF50; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">NEWEST</div>' : ''}
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: start;">
+            <div>
+              <div style="font-size: 18px; font-weight: bold; color: #1976d2; margin-bottom: 8px;">${result.siteName}</div>
+              <div style="margin-bottom: 8px;">
+                <span style="background: #2196F3; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">${result.subnet}</span>
+                ${result.vlanName ? `<span style="margin-left: 10px; color: #666;">VLAN: ${result.vlanName}</span>` : ''}
+              </div>
+              <div style="color: #666; font-size: 14px;">
+                <strong>Admin:</strong> ${result.adminNumber} | <strong>Network:</strong> ${result.networkAddress}<br>
+                <strong>Created:</strong> ${new Date(result.createdAt).toLocaleString()}
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <button onclick="loadConfiguration(${result.configId}); closeIntelligentSearchModal();" 
+                      style="padding: 8px 16px; background: ${isNewest ? '#4CAF50' : '#2196F3'}; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                Load Config
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+  
+  modalBody.innerHTML = html;
+  modal.style.display = 'block';
+}
+
+function showNoResultsMessage(ip) {
+  // Create a helpful no results modal
+  let modal = document.getElementById('intelligentSearchModal');
+  if (!modal) {
+    modal = createIntelligentSearchModal();
+  }
+  
+  const modalBody = modal.querySelector('.intelligent-modal-body');
+  const modalTitle = modal.querySelector('.intelligent-modal-title');
+  
+  modalTitle.innerHTML = `🔍 Search Results for: <span style="color: #ff9800;">${ip}</span>`;
+  
+  modalBody.innerHTML = `
+    <div style="text-align: center; padding: 40px 20px;">
+      <div style="font-size: 64px; margin-bottom: 20px;">🤔</div>
+      <h3 style="color: #ff9800; margin-bottom: 15px;">No Matching Subnets Found</h3>
+      <p style="color: #666; margin-bottom: 20px; line-height: 1.6;">
+        The IP address <strong>${ip}</strong> doesn't appear to belong to any of your saved subnet configurations.
+      </p>
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: left;">
+        <h4 style="color: #333; margin-bottom: 10px;">💡 Suggestions:</h4>
+        <ul style="color: #666; margin: 0; padding-left: 20px;">
+          <li>Double-check the IP address for typos</li>
+          <li>This IP might belong to a network you haven't saved yet</li>
+          <li>Try searching for a different IP in the same network</li>
+          <li>Create a new subnet configuration if this is a new network</li>
+        </ul>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'block';
+}
+
+function createIntelligentSearchModal() {
+  const modal = document.createElement('div');
+  modal.id = 'intelligentSearchModal';
+  modal.style.cssText = `
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    animation: fadeIn 0.3s ease-out;
+  `;
+  
+  const modalContent = document.createElement('div');
+  modalContent.style.cssText = `
+    background-color: #ffffff;
+    margin: 3% auto;
+    padding: 0;
+    border: none;
+    width: 90%;
+    max-width: 900px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    animation: slideIn 0.3s ease-out;
+  `;
+  
+  modalContent.innerHTML = `
+    <div style="background: linear-gradient(135deg, #2196F3 0%, #21CBF3 100%); color: white; padding: 25px; border-radius: 12px 12px 0 0; position: relative;">
+      <h3 class="intelligent-modal-title" style="margin: 0; font-size: 20px; font-weight: 600;">🎯 Intelligent IP Search Results</h3>
+      <span onclick="closeIntelligentSearchModal()" 
+            style="position: absolute; top: 20px; right: 25px; color: white; font-size: 28px; font-weight: bold; cursor: pointer; opacity: 0.8; transition: opacity 0.2s;"
+            onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">&times;</span>
+    </div>
+    <div class="intelligent-modal-body" style="padding: 25px; max-height: 500px; overflow-y: auto;">
+      <!-- Results will be populated here -->
+    </div>
+    <div style="background: #f8f9fa; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #e0e0e0;">
+      <button onclick="closeIntelligentSearchModal()" 
+              style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">
+        Close
+      </button>
+    </div>
+  `;
+  
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+  
+  // Close modal when clicking outside of it
+  modal.onclick = function(event) {
+    if (event.target === modal) {
+      closeIntelligentSearchModal();
+    }
+  };
+  
+  // Add CSS animations
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideIn {
+      from { transform: translateY(-50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  return modal;
+}
+
+function closeIntelligentSearchModal() {
+  const modal = document.getElementById('intelligentSearchModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
 }
 
 //-->
@@ -531,6 +1438,96 @@ P		{
  background-color:green;
 }
 
+.vlan-input {
+  font-family: Arial, Verdana, sans-serif;
+  font-size: 11px;
+  border: 1px solid #ccc;
+  padding: 2px;
+  width: 100px;
+}
+
+/* IP Search Highlight */
+.ip-search-highlight {
+  background-color: #fffacd !important;
+  border: 2px solid #4CAF50 !important;
+  animation: highlightPulse 1.5s ease-in-out;
+}
+
+@keyframes highlightPulse {
+  0%, 100% { background-color: #fffacd; }
+  50% { background-color: #ffeb8b; }
+}
+
+/* Modal Styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.4);
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 15% auto;
+  padding: 20px;
+  border: 1px solid #888;
+  width: 400px;
+  border-radius: 5px;
+  font-family: Arial, Verdana, sans-serif;
+}
+
+.modal-header {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+.button-group {
+  text-align: right;
+  margin-top: 20px;
+}
+
+.button-group button {
+  margin-left: 10px;
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: #007cba;
+  color: white;
+  border-color: #007cba;
+}
+
+.btn-secondary {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
 </style>
 </head>
 <body>
@@ -559,19 +1556,57 @@ P		{
 </tr>
 </table>
 
+<!-- Intelligent IP Address Search -->
+<div style="margin: 15px 0; padding: 15px; border: 1px solid #2196F3; border-radius: 8px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);">
+  <table cellspacing="0" style="width: 100%;">
+    <tr>
+      <td class="label" style="width: 140px; color: #1565c0; font-weight: bold;">🔍 Find IP Address</td>
+      <td style="width: 250px;">
+        <input type="text" id="ipSearchField" placeholder="e.g. 192.168.3.7" size="20" maxlength="15" 
+               style="padding: 8px 12px; border: 2px solid #2196F3; border-radius: 6px; font-size: 14px; width: 200px;"
+               onkeypress="if(event.key==='Enter') searchIPInDatabase()"
+               oninput="handleIPInput(this.value)">
+      </td>
+      <td>
+        <button type="button" onclick="searchIPInDatabase()" 
+                style="padding: 8px 16px; margin-left: 10px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Search</button>
+      </td>
+      <td>
+        <button type="button" onclick="clearIPSearch()" 
+                style="padding: 8px 16px; margin-left: 5px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer;">Clear</button>
+      </td>
+      <td style="padding-left: 20px;">
+        <span id="ipSearchResult" style="font-weight: bold; color: #666; font-size: 14px;"></span>
+      </td>
+    </tr>
+  </table>
+  <div style="font-size: 13px; color: #1565c0; margin-top: 8px; font-weight: 500;">
+    🎯 Intelligent search across all saved subnet configurations. Enter any IP address to instantly find which subnet it belongs to.
+  </div>
+</div>
+
 <p>Show columns: 
 <input type="checkbox" id="cb_subnet" checked onclick="toggleColumn(this)"><label for="cb_subnet">Subnet address</label>
 <input type="checkbox" id="cb_netmask" onclick="toggleColumn(this)"><label for="cb_netmask">Netmask</label>
 <input type="checkbox" id="cb_range" checked onclick="toggleColumn(this)"><label for="cb_range">Range of addresses</label>
 <input type="checkbox" id="cb_useable" checked onclick="toggleColumn(this)"><label for="cb_useable">Useable IPs</label>
 <input type="checkbox" id="cb_hosts" checked onclick="toggleColumn(this)"><label for="cb_hosts">Hosts</label>
+<input type="checkbox" id="cb_vlanname" checked onclick="toggleColumn(this)"><label for="cb_vlanname">VLAN Name</label>
 <input type="checkbox" id="cb_divide" checked onclick="toggleColumn(this)"><label for="cb_divide">Divide</label>
 <input type="checkbox" id="cb_join" checked onclick="toggleColumn(this)"><label for="cb_join">Join</label>
 </p>
 </form>
 
 <p>Click below to split and join subnets.<br>
-If you wish to save this subnetting for later, bookmark <a href="subnets.html" id="saveLink">this hyperlink</a>.</p>
+Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> | 
+<a href="#" id="saveToDbLink" onclick="showSaveDialog(); return false;">Save to Database</a> | 
+<a href="#" id="loadFromDbLink" onclick="showLoadDialog(); return false;">Load from Database</a></p>
+
+<div id="currentConfigInfo" style="display: none; background-color: #e8f4fd; border: 1px solid #bee5eb; padding: 10px; margin: 10px 0; border-radius: 3px; font-size: 12px;">
+  <strong>Current Configuration:</strong> 
+  <span id="configInfoText"></span>
+  <button onclick="resetCurrentConfig()" style="float: right; padding: 2px 8px; font-size: 11px; background-color: #6c757d; color: white; border: none; border-radius: 2px; cursor: pointer;">Start New</button>
+</div>
 
 </td>
 <td align="right">
@@ -592,6 +1627,7 @@ If you wish to save this subnetting for later, bookmark <a href="subnets.html" i
 <th id="rangeHeader">Range of addresses</th>
 <th id="useableHeader">Useable IPs</th>
 <th id="hostsHeader">Hosts</th>
+<th id="vlannameHeader">VLAN Name</th>
 <th id="divideHeader">Divide</th>
 <th id="joinHeader">Join</th>
 </tr>
@@ -605,6 +1641,68 @@ If you wish to save this subnetting for later, bookmark <a href="subnets.html" i
 </tr-->
 </tbody>
 </table>
+
+<!-- Save to Database Modal -->
+<div id="saveModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">Save Subnet Configuration</div>
+    <form id="saveForm">
+      <div class="form-group">
+        <label for="siteName">Site Name *</label>
+        <input type="text" id="siteName" name="siteName" required placeholder="Enter site name">
+      </div>
+      <div class="form-group">
+        <label for="adminNumber">Site Administration Number *</label>
+        <input type="text" id="adminNumber" name="adminNumber" required placeholder="Enter administration number">
+      </div>
+      <div class="form-group">
+        <label for="networkAddress">Network Address *</label>
+        <input type="text" id="networkAddress" name="networkAddress" required placeholder="x.x.x.x/x" readonly>
+      </div>
+      <div class="button-group">
+        <button type="button" class="btn-secondary" onclick="hideSaveDialog()">Cancel</button>
+        <button type="submit" class="btn-primary">Save Configuration</button>
+      </div>
+    </form>
+    <div id="saveStatus" style="margin-top: 15px; display: none;"></div>
+  </div>
+</div>
+
+<!-- Load Configurations Modal -->
+<div id="loadModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">Load Saved Configuration</div>
+    
+    <!-- Search Section -->
+    <div style="margin-bottom: 15px;">
+      <div style="position: relative;">
+        <input type="text" id="configSearch" placeholder="🔍 Search by IP address, admin ID, or site name..." 
+               style="width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; font-size: 14px;"
+               oninput="searchConfigurations(this.value)"
+               onkeydown="handleSearchKeydown(event)">
+        <button type="button" onclick="clearSearch()" id="clearSearchBtn" 
+                style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; display: none; color: #666; font-size: 16px;"
+                title="Clear search">×</button>
+      </div>
+      <div style="margin-top: 5px; font-size: 12px; color: #666;">
+        <strong>Search tips:</strong> Use multiple terms for precise results • Try: "192.168 office", "NET001 /24", or "admin 45"
+      </div>
+    </div>
+    
+    <div id="configList" style="max-height: 300px; overflow-y: auto;">
+      Loading saved configurations...
+    </div>
+    
+    <!-- Search Results Info -->
+    <div id="searchResultInfo" style="padding: 8px; font-size: 12px; color: #666; border-top: 1px solid #eee; margin-top: 10px; display: none;">
+      <span id="searchResultCount"></span>
+    </div>
+    
+    <div class="button-group">
+      <button type="button" class="btn-secondary" onclick="hideLoadDialog()">Close</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

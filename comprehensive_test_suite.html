@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Comprehensive Feature Test Suite</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .test-case { margin: 10px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #2196F3; }
+        .test-result { margin: 5px 0; font-weight: bold; }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .warning { color: #ff9800; }
+        .info { color: #2196F3; }
+        .code { font-family: monospace; background: #f5f5f5; padding: 5px; border-radius: 3px; }
+        .instructions { background: #e8f5e8; padding: 10px; border-radius: 5px; margin: 15px 0; }
+        .bug-report { background: #ffebee; padding: 10px; border-left: 3px solid #f44336; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Comprehensive Feature Test Suite</h1>
+    
+    <div class="instructions">
+        <h3>📋 Testing Instructions</h3>
+        <p><strong>Before running tests:</strong></p>
+        <ol>
+            <li>Open <a href="http://localhost:8000/subnets.html" target="_blank">http://localhost:8000/subnets.html</a></li>
+            <li>Set Network Address to <code>192.168.9.0</code> and Mask bits to <code>24</code></li>
+            <li>Click "Update" to generate the base network</li>
+            <li>Create some subnet divisions by clicking "Divide" on some rows</li>
+            <li>Then run the tests below</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h3>🔍 IP Address Search Feature Tests</h3>
+        
+        <div class="test-case">
+            <strong>Test 1.1: IP Search Field Presence</strong>
+            <div class="test-result info">
+                ✓ Verify search field is visible under Network Address section<br>
+                ✓ Field has placeholder "e.g. 192.168.3.7"<br>
+                ✓ Clear button is present<br>
+                ✓ Result display area is visible
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 1.2: Valid IP Search</strong>
+            <div class="test-result">
+                <strong>Input:</strong> <code>192.168.9.6</code><br>
+                <strong>Expected:</strong> Should find subnet <code>192.168.9.0/26</code> (if that subnet exists)<br>
+                <strong>Expected Behavior:</strong> Row highlighting with green border and yellow background
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 1.3: IP Outside Range</strong>
+            <div class="test-result">
+                <strong>Input:</strong> <code>10.0.0.1</code><br>
+                <strong>Expected:</strong> "IP address not found in any current subnet"<br>
+                <strong>Color:</strong> Orange text
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 1.4: Invalid IP Format</strong>
+            <div class="test-result">
+                <strong>Input:</strong> <code>999.999.999.999</code><br>
+                <strong>Expected:</strong> "Invalid IP address format"<br>
+                <strong>Color:</strong> Red text
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 1.5: Clear Functionality</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Enter IP, then click "Clear"<br>
+                <strong>Expected:</strong> Field cleared, highlighting removed, result message cleared
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>💾 Database Save/Load Feature Tests</h3>
+        
+        <div class="test-case">
+            <strong>Test 2.1: Save Configuration</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Configure subnets, click "Bookmark link", fill save form<br>
+                <strong>Expected:</strong> "Configuration saved successfully" message<br>
+                <strong>Required Fields:</strong> Site Name, Admin Number
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 2.2: Load Configuration</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Click "Load from Database", select a configuration<br>
+                <strong>Expected:</strong> Subnet layout restored with VLAN names<br>
+                <strong>Verification:</strong> Check that all subnet divisions match saved state
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 2.3: Update Existing Configuration</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Load config, modify subnets, save again<br>
+                <strong>Expected:</strong> "Configuration updated successfully" (no re-entry of site info)
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>🔍 Database Search Feature Tests</h3>
+        
+        <div class="test-case">
+            <strong>Test 3.1: Search by IP Address</strong>
+            <div class="test-result">
+                <strong>Action:</strong> In load modal, search for "192.168.9"<br>
+                <strong>Expected:</strong> Matching configurations highlighted<br>
+                <strong>Result Count:</strong> "Found X of Y configurations"
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 3.2: Search by Admin ID</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Search for admin number (e.g., "45")<br>
+                <strong>Expected:</strong> Configurations with matching admin ID shown
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 3.3: Search by Site Name</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Search for "home" or "office"<br>
+                <strong>Expected:</strong> Matching site names highlighted
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 3.4: Multiple Search Terms</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Search for "192.168 home"<br>
+                <strong>Expected:</strong> Only configs matching BOTH terms shown
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 3.5: Clear Search</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Enter search term, then press Escape or click clear (×)<br>
+                <strong>Expected:</strong> All configurations shown again, search field cleared
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>🛡️ Validation Feature Tests</h3>
+        
+        <div class="test-case">
+            <strong>Test 4.1: Prevent Cross-Site Assignment</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Save network 192.168.1.0/24 to "Site A", then try saving same network to "Site B"<br>
+                <strong>Expected:</strong> Error message about network already assigned to different site
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 4.2: Prevent Overlapping Subnets</strong>
+            <div class="test-result">
+                <strong>Action:</strong> At same site, save 192.168.1.0/24 then try 192.168.1.128/25<br>
+                <strong>Expected:</strong> Error about overlapping subnets at same site
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 4.3: Allow Valid Configurations</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Save non-overlapping subnets at same site (e.g., 192.168.1.0/24 and 192.168.2.0/24)<br>
+                <strong>Expected:</strong> Both should save successfully
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>🎨 VLAN Name Feature Tests</h3>
+        
+        <div class="test-case">
+            <strong>Test 5.1: Add VLAN Names</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Enter VLAN names in subnet rows<br>
+                <strong>Expected:</strong> Names saved and restored when loading configuration
+            </div>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 5.2: VLAN Name Persistence</strong>
+            <div class="test-result">
+                <strong>Action:</strong> Save config with VLAN names, reload page, load config<br>
+                <strong>Expected:</strong> VLAN names appear in correct rows
+            </div>
+        </div>
+    </div>
+    
+    <div class="bug-report">
+        <h4>🐛 Known Issue Identified</h4>
+        <p><strong>Issue:</strong> IP Search not finding IPs in existing subnets</p>
+        <p><strong>Cause:</strong> Search function not properly parsing subnet table format</p>
+        <p><strong>Status:</strong> ✅ FIXED - Updated search logic to properly read CIDR notation from table cells</p>
+        <p><strong>Test:</strong> Search for "192.168.9.6" should now find subnet "192.168.9.0/26"</p>
+    </div>
+    
+    <div class="test-section">
+        <h3>📊 Test Results Summary</h3>
+        <div id="testResults">
+            <p><strong>Run these tests manually and report results:</strong></p>
+            <div class="test-result">
+                ☐ IP Address Search: <span class="code">___ / 5 tests passed</span>
+            </div>
+            <div class="test-result">
+                ☐ Database Save/Load: <span class="code">___ / 3 tests passed</span>
+            </div>
+            <div class="test-result">
+                ☐ Database Search: <span class="code">___ / 5 tests passed</span>
+            </div>
+            <div class="test-result">
+                ☐ Validation: <span class="code">___ / 3 tests passed</span>
+            </div>
+            <div class="test-result">
+                ☐ VLAN Names: <span class="code">___ / 2 tests passed</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="instructions">
+        <h3>🚀 Quick Test Script</h3>
+        <p><strong>For rapid testing, follow this sequence:</strong></p>
+        <ol>
+            <li><strong>Setup:</strong> Network 192.168.9.0/24 → Update → Create some subnet divisions</li>
+            <li><strong>IP Search:</strong> Try "192.168.9.6", "10.0.0.1", "999.999.999.999"</li>
+            <li><strong>Save/Load:</strong> Save config → Load it back → Verify subnets match</li>
+            <li><strong>Search DB:</strong> Load modal → Search by IP, admin, site name</li>
+            <li><strong>Validation:</strong> Try saving same network to different sites</li>
+        </ol>
+    </div>
+
+</body>
+</html>

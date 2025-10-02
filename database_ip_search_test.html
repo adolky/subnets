@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database IP Search Test Suite</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; }
+        .test-case { margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #2196F3; border-radius: 4px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 4px; font-weight: bold; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .error { background: #ffebee; color: #c62828; }
+        .warning { background: #fff3e0; color: #ef6c00; }
+        .info { background: #e3f2fd; color: #1565c0; }
+        .code { font-family: 'Courier New', monospace; background: #f8f8f8; padding: 8px; border-radius: 4px; border: 1px solid #ddd; }
+        .setup-box { background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #4caf50; }
+        button { background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #1976d2; }
+        .test-button { background: #4caf50; }
+        .test-button:hover { background: #388e3c; }
+        .api-test { background: #263238; color: #fff; padding: 15px; border-radius: 4px; font-family: monospace; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Database IP Search Test Suite</h1>
+            <p>Comprehensive testing for IP address search across saved subnet configurations</p>
+        </div>
+
+        <div class="setup-box">
+            <h3>📋 Setup Instructions</h3>
+            <ol>
+                <li><strong>Ensure server is running:</strong> <code>php -S localhost:8000</code></li>
+                <li><strong>Create test data:</strong> Save 2-3 different subnet configurations using the main app</li>
+                <li><strong>Test configurations should include:</strong>
+                    <ul>
+                        <li>192.168.1.0/24 with some subnet divisions (e.g., Site: "Office A", Admin: "101")</li>
+                        <li>10.0.0.0/16 with different divisions (e.g., Site: "Office B", Admin: "102")</li>
+                        <li>172.16.0.0/20 (e.g., Site: "Data Center", Admin: "103")</li>
+                    </ul>
+                </li>
+                <li><strong>Run tests below to validate functionality</strong></li>
+            </ol>
+        </div>
+
+        <div class="test-section">
+            <h3>🧪 Automated API Tests</h3>
+            <button class="test-button" onclick="runAPITests()">🚀 Run API Tests</button>
+            <button onclick="testDatabaseConnection()">🔌 Test Database</button>
+            <button onclick="clearResults()">🗑️ Clear Results</button>
+            <div id="apiResults"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🎯 Manual Integration Tests</h3>
+            <p><strong>Test these scenarios in the main application:</strong></p>
+            
+            <div class="test-case">
+                <h4>Test 1: Basic Database Search</h4>
+                <ol>
+                    <li>Go to <a href="http://localhost:8000/subnets.html" target="_blank">main application</a></li>
+                    <li>Enter an IP address that exists in a saved configuration (e.g., <code>192.168.1.50</code>)</li>
+                    <li>Click "Search Database" button</li>
+                    <li><strong>Expected:</strong> Modal opens showing matching configurations</li>
+                    <li><strong>Expected:</strong> Shows site name, admin number, subnet found, and creation date</li>
+                </ol>
+            </div>
+
+            <div class="test-case">
+                <h4>Test 2: Multiple Matches</h4>
+                <ol>
+                    <li>Create configurations that might have overlapping IP ranges</li>
+                    <li>Search for an IP that could exist in multiple subnets</li>
+                    <li><strong>Expected:</strong> All matching configurations displayed</li>
+                    <li><strong>Expected:</strong> Each result shows correct subnet and configuration info</li>
+                </ol>
+            </div>
+
+            <div class="test-case">
+                <h4>Test 3: No Results</h4>
+                <ol>
+                    <li>Search for an IP that doesn't exist in any saved configuration (e.g., <code>203.0.113.1</code>)</li>
+                    <li><strong>Expected:</strong> Message "IP not found in any saved configurations"</li>
+                    <li><strong>Expected:</strong> No modal opens</li>
+                </ol>
+            </div>
+
+            <div class="test-case">
+                <h4>Test 4: Load Configuration</h4>
+                <ol>
+                    <li>Search for an IP and get results</li>
+                    <li>Click "Load Configuration" button in one of the results</li>
+                    <li><strong>Expected:</strong> Modal closes and configuration loads</li>
+                    <li><strong>Expected:</strong> Current subnet table updates to show the loaded configuration</li>
+                </ol>
+            </div>
+
+            <div class="test-case">
+                <h4>Test 5: Invalid IP Validation</h4>
+                <ol>
+                    <li>Enter invalid IP addresses: <code>999.999.999.999</code>, <code>192.168.1</code>, <code>abc.def.ghi.jkl</code></li>
+                    <li>Click "Search Database"</li>
+                    <li><strong>Expected:</strong> "Invalid IP address format" error message</li>
+                    <li><strong>Expected:</strong> No API call made</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>⚡ Quick Test Data Setup</h3>
+            <p>Use these commands to create test data quickly:</p>
+            <button onclick="createTestData()">🏗️ Create Test Data</button>
+            <div id="testDataResults"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 Performance Tests</h3>
+            <button onclick="performanceTest()">⚡ Performance Test</button>
+            <div id="performanceResults"></div>
+        </div>
+
+    </div>
+
+    <script>
+        async function runAPITests() {
+            const resultsDiv = document.getElementById('apiResults');
+            resultsDiv.innerHTML = '<h4>Running API Tests...</h4>';
+            
+            const testCases = [
+                { ip: '192.168.1.50', description: 'Valid IP in typical range', expectSuccess: true },
+                { ip: '10.0.0.1', description: 'Valid IP in another common range', expectSuccess: true },
+                { ip: '203.0.113.1', description: 'Valid but unlikely IP', expectSuccess: true },
+                { ip: '999.999.999.999', description: 'Invalid IP format', expectSuccess: false },
+                { ip: '192.168.1', description: 'Incomplete IP', expectSuccess: false },
+                { ip: '', description: 'Empty IP', expectSuccess: false }
+            ];
+
+            let results = [];
+            
+            for (const testCase of testCases) {
+                try {
+                    console.log(`Testing: ${testCase.ip || 'empty'}`);
+                    
+                    const response = await fetch(`api.php?action=searchIP&ip=${encodeURIComponent(testCase.ip)}`);
+                    const data = await response.json();
+                    
+                    const passed = testCase.expectSuccess ? data.success : !data.success;
+                    
+                    results.push({
+                        ...testCase,
+                        response: data,
+                        passed: passed,
+                        actualSuccess: data.success
+                    });
+                    
+                } catch (error) {
+                    results.push({
+                        ...testCase,
+                        response: { error: error.message },
+                        passed: false,
+                        actualSuccess: false
+                    });
+                }
+            }
+            
+            // Display results
+            let html = '<h4>API Test Results</h4>';
+            let passCount = 0;
+            
+            results.forEach((result, index) => {
+                const statusClass = result.passed ? 'success' : 'error';
+                const statusIcon = result.passed ? '✅' : '❌';
+                
+                if (result.passed) passCount++;
+                
+                html += `
+                    <div class="result ${statusClass}">
+                        ${statusIcon} <strong>Test ${index + 1}:</strong> ${result.description}<br>
+                        <strong>Input:</strong> "${result.ip}"<br>
+                        <strong>Expected Success:</strong> ${result.expectSuccess}<br>
+                        <strong>Actual Success:</strong> ${result.actualSuccess}<br>
+                        <strong>Response:</strong> ${JSON.stringify(result.response, null, 2)}
+                    </div>
+                `;
+            });
+            
+            html += `
+                <div class="result ${passCount === results.length ? 'success' : 'warning'}">
+                    <h4>Summary: ${passCount}/${results.length} tests passed</h4>
+                </div>
+            `;
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        async function testDatabaseConnection() {
+            const resultsDiv = document.getElementById('apiResults');
+            
+            try {
+                const response = await fetch('api.php?action=list');
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ Database connection successful!<br>
+                            Found ${data.data ? data.data.length : 0} saved configurations
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="result error">
+                            ❌ Database connection failed: ${data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="result error">
+                        ❌ Connection error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function createTestData() {
+            const resultsDiv = document.getElementById('testDataResults');
+            resultsDiv.innerHTML = '<p>Creating test data...</p>';
+            
+            const testConfigurations = [
+                {
+                    siteName: 'Test Office A',
+                    adminNumber: '101',
+                    networkAddress: '192.168.1.0/24',
+                    maskBits: 24,
+                    divisionData: [24, 1, [[25, 1, [[26, 2, [null, null]]]]]]
+                },
+                {
+                    siteName: 'Test Office B', 
+                    adminNumber: '102',
+                    networkAddress: '10.0.0.0/16',
+                    maskBits: 16,
+                    divisionData: [16, 1, [[17, 2, [null, null]]]]
+                },
+                {
+                    siteName: 'Test Data Center',
+                    adminNumber: '103', 
+                    networkAddress: '172.16.0.0/20',
+                    maskBits: 20,
+                    divisionData: [20, 1, [[21, 2, [null, null]]]]
+                }
+            ];
+
+            let results = [];
+            
+            for (const config of testConfigurations) {
+                try {
+                    const response = await fetch('api.php?action=save', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(config)
+                    });
+                    
+                    const data = await response.json();
+                    results.push({ config: config.siteName, success: data.success, message: data.message });
+                    
+                } catch (error) {
+                    results.push({ config: config.siteName, success: false, message: error.message });
+                }
+            }
+            
+            let html = '<h4>Test Data Creation Results</h4>';
+            results.forEach(result => {
+                const statusClass = result.success ? 'success' : 'error';
+                const statusIcon = result.success ? '✅' : '❌';
+                html += `
+                    <div class="result ${statusClass}">
+                        ${statusIcon} <strong>${result.config}:</strong> ${result.message}
+                    </div>
+                `;
+            });
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        async function performanceTest() {
+            const resultsDiv = document.getElementById('performanceResults');
+            resultsDiv.innerHTML = '<p>Running performance test...</p>';
+            
+            const testIP = '192.168.1.50';
+            const iterations = 10;
+            let times = [];
+            
+            for (let i = 0; i < iterations; i++) {
+                const startTime = performance.now();
+                
+                try {
+                    await fetch(`api.php?action=searchIP&ip=${testIP}`);
+                    const endTime = performance.now();
+                    times.push(endTime - startTime);
+                } catch (error) {
+                    console.error('Performance test error:', error);
+                }
+            }
+            
+            if (times.length > 0) {
+                const avgTime = times.reduce((a, b) => a + b) / times.length;
+                const minTime = Math.min(...times);
+                const maxTime = Math.max(...times);
+                
+                resultsDiv.innerHTML = `
+                    <div class="result info">
+                        <h4>Performance Test Results (${iterations} iterations)</h4>
+                        <strong>Average:</strong> ${avgTime.toFixed(2)}ms<br>
+                        <strong>Min:</strong> ${minTime.toFixed(2)}ms<br>
+                        <strong>Max:</strong> ${maxTime.toFixed(2)}ms<br>
+                        <strong>Status:</strong> ${avgTime < 100 ? '✅ Good' : avgTime < 500 ? '⚠️ Fair' : '❌ Slow'}
+                    </div>
+                `;
+            } else {
+                resultsDiv.innerHTML = `
+                    <div class="result error">
+                        ❌ Performance test failed - no successful requests
+                    </div>
+                `;
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('apiResults').innerHTML = '';
+            document.getElementById('testDataResults').innerHTML = '';
+            document.getElementById('performanceResults').innerHTML = '';
+        }
+
+        // Auto-run database connection test on load
+        window.onload = function() {
+            console.log('🧪 Database IP Search Test Suite Loaded');
+            testDatabaseConnection();
+        };
+    </script>
+</body>
+</html>
