@@ -353,8 +353,34 @@ function createRow(calcbody, node, address, mask, labels, depth)
 	  newCell.className = 'maskSpan';
 	}
 	else {
-	  newCell.className = 'maskSpanJoinable';
+	  // Add base class and level-specific color class
+	  var baseClassName = 'maskSpanJoinable';
+	  var levelClass = '';
+	  
+	  // Determine color based on mask level and node state
+	  if (mask >= 24 && mask <= 30) {
+	    // Check if this represents divided subnets or available space
+	    if (joinnode && joinnode[2] && joinnode[2].length > 0) {
+	      // Has subdivisions - use level colors (orange/red gradient)
+	      levelClass = 'level-' + mask;
+	    } else {
+	      // Available space - use blue
+	      levelClass = 'available';
+	    }
+	  } else if (mask < 24) {
+	    // Very large subnets - use available color
+	    levelClass = 'available';
+	  } else {
+	    // Beyond /30 - use the deepest color
+	    levelClass = 'level-30';
+	  }
+	  
+	  newCell.className = baseClassName + ' ' + levelClass;
 	  newCell.onclick = newJoin(joinnode);
+	  
+	  // Add tooltip to show subnet level and action
+	  var actionText = levelClass === 'available' ? 'Click to join available subnets' : 'Click to join divided subnets';
+	  newCell.title = actionText + ' at /' + mask + ' level';
 	  //	newCell.onmouseover = function() { window.status = joinnode[0]+'---'+joinnode[1]+'---'+joinnode[2]+'>>>>>'+node[2];}
 	}
 
@@ -1426,11 +1452,109 @@ P		{
 .maskSpan {
   background-color: #cccccc;
   text-align: right;
+  border: 1px solid #999;
+  padding: 2px;
 }
 .maskSpanJoinable {
   background-color: #cccccc;
   text-align: right;
- cursor: pointer;
+  cursor: pointer;
+  border: 1px solid #999;
+  padding: 2px;
+  position: relative;
+}
+
+/* Join section color coding based on subnet levels - matching the visual grid colors */
+.maskSpanJoinable.level-24 {
+  background-color: #ff8a50; /* Orange matching the grid */
+  border-color: #ff6d00;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.level-25 {
+  background-color: #ff7043; /* Deeper orange */
+  border-color: #ff5722;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.level-26 {
+  background-color: #ff5722; /* Red-orange */
+  border-color: #f4511e;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.level-27 {
+  background-color: #f4511e; /* Deep orange-red */
+  border-color: #e64a19;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.level-28 {
+  background-color: #e64a19; /* Red */
+  border-color: #d84315;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.level-29 {
+  background-color: #d84315; /* Deep red */
+  border-color: #bf360c;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.level-30 {
+  background-color: #bf360c; /* Very deep red */
+  border-color: #a0230a;
+  color: white;
+  font-weight: bold;
+}
+
+/* Alternative color scheme for available/unused space - matching the blue grid */
+.maskSpanJoinable.available {
+  background-color: #42a5f5; /* Vibrant blue for available space */
+  border-color: #2196f3;
+  color: white;
+  font-weight: bold;
+}
+.maskSpanJoinable.available:hover {
+  background-color: #2196f3; /* Deeper blue on hover */
+  border-color: #1976d2;
+}
+
+/* Hover effects for joinable cells */
+.maskSpanJoinable:hover {
+  opacity: 0.9;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+  transform: translateY(-1px) scale(1.02);
+  transition: all 0.2s ease;
+  z-index: 10;
+  position: relative;
+}
+
+/* Active/clicked state for joinable cells */
+.maskSpanJoinable:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  transition: all 0.1s ease;
+}
+
+/* Smooth transitions for all joinable cells */
+.maskSpanJoinable {
+  transition: all 0.2s ease;
+}
+
+/* Add a subtle glow effect for better visibility */
+.maskSpanJoinable.level-24,
+.maskSpanJoinable.level-25,
+.maskSpanJoinable.level-26,
+.maskSpanJoinable.level-27,
+.maskSpanJoinable.level-28,
+.maskSpanJoinable.level-29,
+.maskSpanJoinable.level-30 {
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.3);
+}
+
+.maskSpanJoinable.available {
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.3);
 }
 
 .maskSpanRotate {
