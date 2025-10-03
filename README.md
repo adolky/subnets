@@ -13,7 +13,8 @@ A powerful, web-based subnet calculator with visual representation, intelligent 
 - **Dynamic Subnet Creation**: Click-to-divide subnets with real-time calculation
 - **Join Functionality**: Merge adjacent subnets back together with color-coded interface
 - **Multiple Subnet Levels**: Support for /8 to /30 subnet masks
-- **VLAN Management**: Assign and manage VLAN names for each subnet
+- **VLAN ID Management**: Assign numeric VLAN IDs (1-4094) with full validation
+- **VLAN Descriptions**: Detailed descriptions for each VLAN (renamed from VLAN Name)
 
 ### 💾 **Database Management**
 - **Persistent Storage**: Save and load subnet configurations with SQLite database
@@ -32,6 +33,27 @@ A powerful, web-based subnet calculator with visual representation, intelligent 
 - **Color-Coded Visualization**: Orange/red gradient for divided subnets, blue for available space
 - **Interactive Elements**: Hover effects, animations, and visual feedback
 - **Clean UX**: Intuitive interface with helpful tooltips and status messages
+
+## 🆕 **Latest Updates - VLAN ID Management**
+
+### New VLAN ID Column
+
+- **Numeric VLAN IDs**: Assign VLAN IDs from 1 to 4094 with automatic validation
+- **Column Positioning**: VLAN ID column positioned between Hosts and Description columns
+- **Real-time Validation**: Immediate feedback for invalid VLAN IDs or out-of-range values
+
+### Enhanced VLAN Features
+
+- **Description Column**: Renamed from "VLAN Name" for better clarity and organization
+- **Validation Engine**: Comprehensive validation prevents invalid VLAN assignments
+- **Update Support**: Edit existing configurations with full VLAN ID validation
+- **Database Integration**: VLAN IDs stored separately from descriptions for better data management
+
+### API Enhancements
+
+- **VLAN ID Validation**: Backend validation ensures data integrity
+- **Enhanced Responses**: Improved error messages for VLAN-related issues
+- **Backward Compatibility**: Existing configurations continue to work seamlessly
 
 ## ✅ Deployment Verification
 
@@ -131,8 +153,10 @@ open http://localhost/subnets.html
    - Use the color-coded "Join" column to merge subnets back
 
 3. **Add VLAN Information**
-   - Click on any subnet row to add VLAN names
-   - Organize your network with meaningful names
+   - **VLAN ID Column**: Assign numeric VLAN IDs (1-4094) to each subnet
+   - **Description Column**: Add meaningful descriptions for each VLAN (formerly VLAN Name)
+   - **Validation**: Automatic validation ensures VLAN IDs are within valid range
+   - **Real-time Updates**: Changes are validated and saved instantly
 
 4. **Save Configuration**
    - Enter Site Name and Admin Number
