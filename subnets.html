@@ -10,6 +10,7 @@ var visibleColumns = {
   range: true,
   useable: true,
   hosts: true,
+  vlanid: true,
   vlanname: true,
   divide: true,
   join: true,
@@ -119,9 +120,13 @@ function recreateTables()
   var link = document.getElementById('saveLink');
   if (link) {
     var vlanNames = vlanNamesToString(rootSubnet, curNetwork, curMask);
+    var vlanIds = vlanIdsToString(rootSubnet, curNetwork, curMask);
     var url = 'subnets.html?network='+inet_ntoa(curNetwork)+'&mask='+curMask+'&division='+binToAscii(nodeToString(rootSubnet));
     if (vlanNames) {
       url += '&vlans=' + encodeURIComponent(vlanNames);
+    }
+    if (vlanIds) {
+      url += '&vlanids=' + encodeURIComponent(vlanIds);
     }
     link.href = url;
   }
@@ -150,6 +155,19 @@ function vlanNamesToString(node, address, mask)
   return result;
 }
 
+function vlanIdsToString(node, address, mask)
+{
+  var result = '';
+  if (node[4]) {
+    result += inet_ntoa(address) + '/' + mask + ':' + encodeURIComponent(node[4]) + ';';
+  }
+  if (node[2]) {
+    result += vlanIdsToString(node[2][0], address, mask+1);
+    result += vlanIdsToString(node[2][1], address+subnet_addresses(mask+1), mask+1);
+  }
+  return result;
+}
+
 function loadVlanNames(vlanStr, node, address, mask)
 {
   if (!vlanStr) return;
@@ -162,6 +180,23 @@ function loadVlanNames(vlanStr, node, address, mask)
         var subnet = parts[0];
         var vlanName = decodeURIComponent(parts[1]);
         setVlanForSubnet(node, address, mask, subnet, vlanName);
+      }
+    }
+  }
+}
+
+function loadVlanIds(vlanStr, node, address, mask)
+{
+  if (!vlanStr) return;
+  
+  var vlans = vlanStr.split(';');
+  for (var i = 0; i < vlans.length; i++) {
+    if (vlans[i]) {
+      var parts = vlans[i].split(':');
+      if (parts.length >= 2) {
+        var subnet = parts[0];
+        var vlanId = decodeURIComponent(parts[1]);
+        setVlanIdForSubnet(node, address, mask, subnet, vlanId);
       }
     }
   }
@@ -180,6 +215,25 @@ function setVlanForSubnet(node, address, mask, targetSubnet, vlanName)
       return true;
     }
     if (setVlanForSubnet(node[2][1], address+subnet_addresses(mask+1), mask+1, targetSubnet, vlanName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function setVlanIdForSubnet(node, address, mask, targetSubnet, vlanId)
+{
+  var currentSubnet = inet_ntoa(address) + '/' + mask;
+  if (currentSubnet === targetSubnet) {
+    node[4] = vlanId;
+    return true;
+  }
+  
+  if (node[2]) {
+    if (setVlanIdForSubnet(node[2][0], address, mask+1, targetSubnet, vlanId)) {
+      return true;
+    }
+    if (setVlanIdForSubnet(node[2][1], address+subnet_addresses(mask+1), mask+1, targetSubnet, vlanId)) {
       return true;
     }
   }
@@ -303,13 +357,28 @@ function createRow(calcbody, node, address, mask, labels, depth)
       newRow.appendChild(newCell);
     }
 
-    /* VLAN Name */
+    /* VLAN ID */
+    if (visibleColumns.vlanid) {
+      var newCell = document.createElement('TD');
+      var vlanIdInput = document.createElement('INPUT');
+      vlanIdInput.type = 'number';
+      vlanIdInput.value = node[4] || '';
+      vlanIdInput.placeholder = 'VLAN ID';
+      vlanIdInput.className = 'vlan-input';
+      vlanIdInput.min = '1';
+      vlanIdInput.max = '4094';
+      vlanIdInput.onchange = function() { updateVlanId(node, this.value); };
+      newCell.appendChild(vlanIdInput);
+      newRow.appendChild(newCell);
+    }
+
+    /* Description (formerly VLAN Name) */
     if (visibleColumns.vlanname) {
       var newCell = document.createElement('TD');
       var vlanInput = document.createElement('INPUT');
       vlanInput.type = 'text';
       vlanInput.value = node[3] || '';
-      vlanInput.placeholder = 'VLAN Name';
+      vlanInput.placeholder = 'Description';
       vlanInput.className = 'vlan-input';
       vlanInput.onchange = function() { updateVlanName(node, this.value); };
       newCell.appendChild(vlanInput);
@@ -420,6 +489,11 @@ function join(node)
 function updateVlanName(node, vlanName)
 {
   node[3] = vlanName;
+}
+
+function updateVlanId(node, vlanId)
+{
+  node[4] = vlanId;
 }
 
 function updateNumChildren(node)
@@ -535,6 +609,9 @@ function calcOnLoad()
     }
     if (args['vlans']) {
       loadVlanNames(decodeURIComponent(args['vlans']), rootSubnet, curNetwork, curMask);
+    }
+    if (args['vlanids']) {
+      loadVlanIds(decodeURIComponent(args['vlanids']), rootSubnet, curNetwork, curMask);
     }
     recreateTables();
   }
@@ -704,6 +781,7 @@ function saveToDatabase(event) {
   }
   
   const vlanNames = vlanNamesToString(rootSubnet, curNetwork, curMask);
+  const vlanIds = vlanIdsToString(rootSubnet, curNetwork, curMask);
   const divisionData = binToAscii(nodeToString(rootSubnet));
   
   const data = {
@@ -712,6 +790,7 @@ function saveToDatabase(event) {
     networkAddress: networkAddress,
     maskBits: curMask,
     divisionData: divisionData,
+    vlanIds: vlanIds,
     vlanNames: vlanNames
   };
   
@@ -886,6 +965,7 @@ function performAdvancedSearch(searchTerm) {
       // Secondary fields
       location: config.location || '',
       description: config.description || '',
+      vlan_ids: config.vlan_ids || '',
       vlan_names: config.vlan_names || ''
     };
     
@@ -981,9 +1061,12 @@ function loadConfiguration(configId) {
           }
         }
         
-        // Load VLAN names
+        // Load VLAN names and IDs
         if (config.vlan_names) {
           loadVlanNames(config.vlan_names, rootSubnet, curNetwork, curMask);
+        }
+        if (config.vlan_ids) {
+          loadVlanIds(config.vlan_ids, rootSubnet, curNetwork, curMask);
         }
         
         recreateTables();
@@ -1159,7 +1242,7 @@ function searchIPInDatabase() {
   const ip = ipField.value.trim();
   
   if (!ip) {
-    resultElement.textContent = '🔍 Please enter an IP address to search';
+    resultElement.textContent = 'Please enter an IP address to search';
     resultElement.style.color = '#ff9800';
     ipField.focus();
     return;
@@ -1167,12 +1250,12 @@ function searchIPInDatabase() {
   
   // Validate IP address format
   if (!isValidIPAddress(ip)) {
-    resultElement.textContent = '❌ Invalid IP address format';
+    resultElement.textContent = 'Invalid IP address format';
     resultElement.style.color = '#f44336';
     return;
   }
   
-  resultElement.textContent = '🔍 Searching across all configurations...';
+  resultElement.textContent = 'Searching across all configurations...';
   resultElement.style.color = '#2196F3';
   
   // Make API call to search IP in database
@@ -1191,21 +1274,21 @@ function searchIPInDatabase() {
           showIntelligentSearchResults(ip, data.data);
           const count = data.data.length;
           const configs = count === 1 ? 'configuration' : 'configurations';
-          resultElement.innerHTML = `✅ Found in <strong>${count}</strong> saved ${configs}`;
+          resultElement.innerHTML = `Found in <strong>${count}</strong> saved ${configs}`;
           resultElement.style.color = '#4CAF50';
         } else {
-          resultElement.innerHTML = '🔍 IP not found in any saved subnet configurations';
+          resultElement.innerHTML = 'IP not found in any saved subnet configurations';
           resultElement.style.color = '#ff9800';
           showNoResultsMessage(ip);
         }
       } else {
-        resultElement.textContent = `❌ ${data.message}`;
+        resultElement.textContent = `Error: ${data.message}`;
         resultElement.style.color = '#f44336';
       }
     })
     .catch(error => {
       console.error('Intelligent search error:', error);
-      resultElement.textContent = '❌ Search service unavailable';
+      resultElement.textContent = 'Search service unavailable';
       resultElement.style.color = '#f44336';
     });
 }
@@ -1220,7 +1303,7 @@ function showIntelligentSearchResults(ip, results) {
   const modalBody = modal.querySelector('.intelligent-modal-body');
   const modalTitle = modal.querySelector('.intelligent-modal-title');
   
-  modalTitle.innerHTML = `🎯 IP Address Analysis: <span style="color: #4CAF50;">${ip}</span>`;
+  modalTitle.innerHTML = `IP Address Analysis: <span style="color: #ffffff; font-weight: bold; background: #4CAF50; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${ip}</span>`;
   
   // Sort results by creation date (newest first)
   results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1231,45 +1314,68 @@ function showIntelligentSearchResults(ip, results) {
     const result = results[0];
     html += `
       <div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 20px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 20px;">
-        <h4 style="margin: 0 0 15px 0; color: #2e7d32;">✅ Perfect Match Found!</h4>
+        <h4 style="margin: 0 0 15px 0; color: #2e7d32;">Target IP Located</h4>
+        <p style="margin: 0 0 15px 0; color: #555; font-size: 14px;">
+          The IP address <strong>${ip}</strong> is contained within the following subnet configuration:
+        </p>
         <div style="display: grid; grid-template-columns: auto 1fr; gap: 15px; align-items: center;">
           <div>
             <div style="font-size: 24px; color: #4CAF50; font-weight: bold;">${result.subnet}</div>
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">Subnet containing your IP</div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">IP found in this subnet</div>
           </div>
           <div>
             <div style="font-size: 18px; font-weight: bold; color: #1976d2; margin-bottom: 8px;">${result.siteName}</div>
             <div style="color: #666;"><strong>Admin:</strong> ${result.adminNumber} | <strong>Network:</strong> ${result.networkAddress}</div>
             ${result.vlanName ? `<div style="color: #666; margin-top: 5px;"><strong>VLAN:</strong> ${result.vlanName}</div>` : ''}
+            <div style="color: #666; margin-top: 5px; font-size: 13px;"><strong>Created:</strong> ${new Date(result.createdAt).toLocaleString()}</div>
           </div>
         </div>
         <div style="margin-top: 15px; text-align: center;">
           <button onclick="loadConfiguration(${result.configId}); closeIntelligentSearchModal();" 
                   style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
-            🚀 Load This Configuration
+            Load This Configuration
           </button>
         </div>
       </div>
     `;
   } else {
+    // Find the smallest subnet (highest CIDR prefix)
+    let smallestSubnet = results[0];
+    let smallestCIDR = parseInt(smallestSubnet.subnet.split('/')[1]);
+    
+    results.forEach(result => {
+      const cidr = parseInt(result.subnet.split('/')[1]);
+      if (cidr > smallestCIDR) {
+        smallestSubnet = result;
+        smallestCIDR = cidr;
+      }
+    });
+    
     html += `
-      <div style="background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); padding: 15px; border-radius: 8px; border-left: 5px solid #ff9800; margin-bottom: 20px;">
-        <h4 style="margin: 0 0 10px 0; color: #ef6c00;">⚠️ Multiple Matches Detected</h4>
-        <p style="margin: 0; color: #666;">The IP address <strong>${ip}</strong> appears in <strong>${results.length} different configurations</strong>. This might indicate overlapping subnet designs.</p>
+      <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f1f8e9 100%); padding: 15px; border-radius: 8px; border-left: 5px solid #2196F3; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 10px 0; color: #1976d2;">Subnet Hierarchy Analysis</h4>
+        <p style="margin: 0; color: #666;">
+          The IP address <strong>${ip}</strong> is found in <strong>${results.length} subnet configurations</strong>. 
+          The smallest (most specific) subnet is highlighted below, with its supernets listed for reference.
+        </p>
       </div>
     `;
     
     results.forEach((result, index) => {
-      const isNewest = index === 0;
+      const isSmallest = result.configId === smallestSubnet.configId;
+      const cidr = parseInt(result.subnet.split('/')[1]);
+      const subnetType = isSmallest ? 'Found in this subnet' : `Supernet (/${cidr})`;
+      
       html += `
-        <div style="border: 2px solid ${isNewest ? '#4CAF50' : '#ddd'}; padding: 15px; margin: 15px 0; border-radius: 8px; background: ${isNewest ? '#f8fff8' : '#f8f9fa'}; position: relative;">
-          ${isNewest ? '<div style="position: absolute; top: -10px; right: 15px; background: #4CAF50; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">NEWEST</div>' : ''}
+        <div style="border: 2px solid ${isSmallest ? '#4CAF50' : '#ddd'}; padding: 15px; margin: 15px 0; border-radius: 8px; background: ${isSmallest ? '#f8fff8' : '#f8f9fa'}; position: relative;">
+          ${isSmallest ? '<div style="position: absolute; top: -10px; right: 15px; background: #4CAF50; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">FOUND HERE</div>' : '<div style="position: absolute; top: -10px; right: 15px; background: #757575; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">SUPERNET</div>'}
           <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: start;">
             <div>
               <div style="font-size: 18px; font-weight: bold; color: #1976d2; margin-bottom: 8px;">${result.siteName}</div>
               <div style="margin-bottom: 8px;">
-                <span style="background: #2196F3; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">${result.subnet}</span>
+                <span style="background: ${isSmallest ? '#4CAF50' : '#757575'}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">${result.subnet}</span>
                 ${result.vlanName ? `<span style="margin-left: 10px; color: #666;">VLAN: ${result.vlanName}</span>` : ''}
+                <span style="margin-left: 10px; color: #666; font-size: 12px; font-style: italic;">${subnetType}</span>
               </div>
               <div style="color: #666; font-size: 14px;">
                 <strong>Admin:</strong> ${result.adminNumber} | <strong>Network:</strong> ${result.networkAddress}<br>
@@ -1278,7 +1384,7 @@ function showIntelligentSearchResults(ip, results) {
             </div>
             <div style="text-align: right;">
               <button onclick="loadConfiguration(${result.configId}); closeIntelligentSearchModal();" 
-                      style="padding: 8px 16px; background: ${isNewest ? '#4CAF50' : '#2196F3'}; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                      style="padding: 8px 16px; background: ${isSmallest ? '#4CAF50' : '#757575'}; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
                 Load Config
               </button>
             </div>
@@ -1302,7 +1408,7 @@ function showNoResultsMessage(ip) {
   const modalBody = modal.querySelector('.intelligent-modal-body');
   const modalTitle = modal.querySelector('.intelligent-modal-title');
   
-  modalTitle.innerHTML = `🔍 Search Results for: <span style="color: #ff9800;">${ip}</span>`;
+  modalTitle.innerHTML = `Search Results for: <span style="color: #ff9800;">${ip}</span>`;
   
   modalBody.innerHTML = `
     <div style="text-align: center; padding: 40px 20px;">
@@ -1356,7 +1462,7 @@ function createIntelligentSearchModal() {
   
   modalContent.innerHTML = `
     <div style="background: linear-gradient(135deg, #2196F3 0%, #21CBF3 100%); color: white; padding: 25px; border-radius: 12px 12px 0 0; position: relative;">
-      <h3 class="intelligent-modal-title" style="margin: 0; font-size: 20px; font-weight: 600;">🎯 Intelligent IP Search Results</h3>
+      <h3 class="intelligent-modal-title" style="margin: 0; font-size: 20px; font-weight: 600;">Intelligent IP Search Results</h3>
       <span onclick="closeIntelligentSearchModal()" 
             style="position: absolute; top: 20px; right: 25px; color: white; font-size: 28px; font-weight: bold; cursor: pointer; opacity: 0.8; transition: opacity 0.2s;"
             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">&times;</span>
@@ -1599,7 +1705,9 @@ P		{
   margin: 15% auto;
   padding: 20px;
   border: 1px solid #888;
-  width: 400px;
+  width: 90%;
+  max-width: 600px;
+  min-width: 500px;
   border-radius: 5px;
   font-family: Arial, Verdana, sans-serif;
 }
@@ -1684,7 +1792,7 @@ P		{
 <div style="margin: 15px 0; padding: 15px; border: 1px solid #2196F3; border-radius: 8px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);">
   <table cellspacing="0" style="width: 100%;">
     <tr>
-      <td class="label" style="width: 140px; color: #1565c0; font-weight: bold;">🔍 Find IP Address</td>
+      <td class="label" style="width: 140px; color: #1565c0; font-weight: bold;">Find IP Address</td>
       <td style="width: 250px;">
         <input type="text" id="ipSearchField" placeholder="e.g. 192.168.3.7" size="20" maxlength="15" 
                style="padding: 8px 12px; border: 2px solid #2196F3; border-radius: 6px; font-size: 14px; width: 200px;"
@@ -1705,7 +1813,7 @@ P		{
     </tr>
   </table>
   <div style="font-size: 13px; color: #1565c0; margin-top: 8px; font-weight: 500;">
-    🎯 Intelligent search across all saved subnet configurations. Enter any IP address to instantly find which subnet it belongs to.
+    Intelligent search across all saved subnet configurations. Enter any IP address to instantly find which subnet it belongs to.
   </div>
 </div>
 
@@ -1715,7 +1823,8 @@ P		{
 <input type="checkbox" id="cb_range" checked onclick="toggleColumn(this)"><label for="cb_range">Range of addresses</label>
 <input type="checkbox" id="cb_useable" checked onclick="toggleColumn(this)"><label for="cb_useable">Useable IPs</label>
 <input type="checkbox" id="cb_hosts" checked onclick="toggleColumn(this)"><label for="cb_hosts">Hosts</label>
-<input type="checkbox" id="cb_vlanname" checked onclick="toggleColumn(this)"><label for="cb_vlanname">VLAN Name</label>
+<input type="checkbox" id="cb_vlanid" checked onclick="toggleColumn(this)"><label for="cb_vlanid">VLAN ID</label>
+<input type="checkbox" id="cb_vlanname" checked onclick="toggleColumn(this)"><label for="cb_vlanname">Description</label>
 <input type="checkbox" id="cb_divide" checked onclick="toggleColumn(this)"><label for="cb_divide">Divide</label>
 <input type="checkbox" id="cb_join" checked onclick="toggleColumn(this)"><label for="cb_join">Join</label>
 </p>
@@ -1734,7 +1843,6 @@ Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> |
 
 </td>
 <td align="right">
-<a href="https://github.com/davidc/subnets"><img alt="Fork me on GitHub" src="https://github.blog/wp-content/uploads/2008/12/forkme_right_white_ffffff.png" style="right: 0;top: 0;position: absolute;"></a>
 </td>
 </tr>
 </table>
@@ -1751,7 +1859,8 @@ Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> |
 <th id="rangeHeader">Range of addresses</th>
 <th id="useableHeader">Useable IPs</th>
 <th id="hostsHeader">Hosts</th>
-<th id="vlannameHeader">VLAN Name</th>
+<th id="vlanidHeader">VLAN ID</th>
+<th id="vlannameHeader">Description</th>
 <th id="divideHeader">Divide</th>
 <th id="joinHeader">Join</th>
 </tr>
@@ -1800,7 +1909,7 @@ Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> |
     <!-- Search Section -->
     <div style="margin-bottom: 15px;">
       <div style="position: relative;">
-        <input type="text" id="configSearch" placeholder="🔍 Search by IP address, admin ID, or site name..." 
+        <input type="text" id="configSearch" placeholder="Search by IP address, admin ID, or site name..." 
                style="width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; font-size: 14px;"
                oninput="searchConfigurations(this.value)"
                onkeydown="handleSearchKeydown(event)">
@@ -1809,7 +1918,7 @@ Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> |
                 title="Clear search">×</button>
       </div>
       <div style="margin-top: 5px; font-size: 12px; color: #666;">
-        <strong>Search tips:</strong> Use multiple terms for precise results • Try: "192.168 office", "NET001 /24", or "admin 45"
+        <strong>Search tips:</strong> Use multiple terms for precise results - Try: "192.168 office", "NET001 /24", or "admin 45"
       </div>
     </div>
     

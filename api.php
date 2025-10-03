@@ -83,7 +83,16 @@ class SubnetAPI {
         $networkAddress = trim($input['networkAddress']);
         $maskBits = intval($input['maskBits']);
         $divisionData = $input['divisionData'];
+        $vlanIds = $input['vlanIds'] ?? '';
         $vlanNames = $input['vlanNames'] ?? '';
+        
+        // Validate VLAN IDs if provided
+        if (!empty($vlanIds)) {
+            $vlanValidation = $this->validateVlanIds($vlanIds);
+            if (!$vlanValidation['valid']) {
+                return $this->sendResponse(false, $vlanValidation['message']);
+            }
+        }
         
         try {
             // Perform validation checks before saving
@@ -117,10 +126,10 @@ class SubnetAPI {
                 
                 $stmt = $this->db->prepare(
                     "UPDATE subnet_configurations 
-                     SET division_data = ?, vlan_names = ?, updated_at = CURRENT_TIMESTAMP 
+                     SET division_data = ?, vlan_ids = ?, vlan_names = ?, updated_at = CURRENT_TIMESTAMP 
                      WHERE id = ?"
                 );
-                $stmt->execute([$divisionData, $vlanNames, $configId]);
+                $stmt->execute([$divisionData, $vlanIds, $vlanNames, $configId]);
                 
                 if ($stmt->rowCount() > 0) {
                     $message = 'Configuration updated successfully';
@@ -141,20 +150,20 @@ class SubnetAPI {
                     // Update existing configuration
                     $stmt = $this->db->prepare(
                         "UPDATE subnet_configurations 
-                         SET division_data = ?, vlan_names = ?, updated_at = CURRENT_TIMESTAMP 
+                         SET division_data = ?, vlan_ids = ?, vlan_names = ?, updated_at = CURRENT_TIMESTAMP 
                          WHERE id = ?"
                     );
-                    $stmt->execute([$divisionData, $vlanNames, $existingConfig['id']]);
+                    $stmt->execute([$divisionData, $vlanIds, $vlanNames, $existingConfig['id']]);
                     $message = 'Configuration updated successfully';
                     return $this->sendResponse(true, $message, ['id' => $existingConfig['id']]);
                 } else {
                     // Insert new configuration
                     $stmt = $this->db->prepare(
                         "INSERT INTO subnet_configurations 
-                         (site_name, admin_number, network_address, mask_bits, division_data, vlan_names) 
-                         VALUES (?, ?, ?, ?, ?, ?)"
+                         (site_name, admin_number, network_address, mask_bits, division_data, vlan_ids, vlan_names) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?)"
                     );
-                    $stmt->execute([$siteName, $adminNumber, $networkAddress, $maskBits, $divisionData, $vlanNames]);
+                    $stmt->execute([$siteName, $adminNumber, $networkAddress, $maskBits, $divisionData, $vlanIds, $vlanNames]);
                     $newId = $this->db->lastInsertId();
                     $message = 'Configuration saved successfully';
                     return $this->sendResponse(true, $message, ['id' => $newId]);
@@ -355,7 +364,7 @@ class SubnetAPI {
         try {
             // Get all subnet configurations from database
             $stmt = $this->db->prepare(
-                "SELECT id, site_name, admin_number, network_address, mask_bits, division_data, vlan_names, created_at 
+                "SELECT id, site_name, admin_number, network_address, mask_bits, division_data, vlan_ids, vlan_names, created_at 
                  FROM subnet_configurations 
                  ORDER BY created_at DESC"
             );
@@ -425,8 +434,8 @@ class SubnetAPI {
         $baseNetwork = $networkParts[0];
         $baseMask = intval($networkParts[1]);
         
-        // If division data is just "1.0", it means no subdivisions
-        if ($divisionData === '1.0' || !$divisionData) {
+        // If division data is just "1.0" or empty/no subdivisions, return base network
+        if ($divisionData === '1.0' || !$divisionData || $divisionData === '[]' || empty(trim($divisionData))) {
             // Just return the base network
             $subnets[] = [
                 'network' => $baseNetwork,
@@ -542,6 +551,51 @@ class SubnetAPI {
         $broadcastAddress = $networkAddress | (~$subnetMask & 0xFFFFFFFF);
         
         return $ipLong >= $networkAddress && $ipLong <= $broadcastAddress;
+    }
+    
+    private function validateVlanIds($vlanIds) {
+        if (empty($vlanIds)) {
+            return ['valid' => true];
+        }
+        
+        // VLAN IDs are stored in format: "subnet:vlanId;subnet:vlanId;"
+        // Split by semicolon to get individual entries
+        $vlanEntries = explode(';', $vlanIds);
+        
+        foreach ($vlanEntries as $entry) {
+            $entry = trim($entry);
+            if (empty($entry)) {
+                continue; // Skip empty values
+            }
+            
+            // Split by colon to separate subnet from VLAN ID
+            $parts = explode(':', $entry);
+            if (count($parts) !== 2) {
+                continue; // Skip malformed entries
+            }
+            
+            $vlanId = urldecode(trim($parts[1]));
+            
+            // Check if it's a valid number
+            if (!is_numeric($vlanId)) {
+                return [
+                    'valid' => false,
+                    'message' => "Invalid VLAN ID: '$vlanId'. VLAN IDs must be numeric."
+                ];
+            }
+            
+            $vlanNum = intval($vlanId);
+            
+            // Check VLAN ID range (1-4094)
+            if ($vlanNum < 1 || $vlanNum > 4094) {
+                return [
+                    'valid' => false,
+                    'message' => "Invalid VLAN ID: $vlanNum. VLAN IDs must be between 1 and 4094."
+                ];
+            }
+        }
+        
+        return ['valid' => true];
     }
     
     private function sendResponse($success, $message, $data = null) {

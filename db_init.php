@@ -46,6 +46,7 @@ class SubnetDatabase {
             network_address TEXT NOT NULL,
             mask_bits INTEGER NOT NULL,
             division_data TEXT,
+            vlan_ids TEXT,
             vlan_names TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
