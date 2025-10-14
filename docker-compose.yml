@@ -3,7 +3,12 @@ version: '3.8'
 
 services:
   subnet-calculator:
-    build: .
+    build:
+      context: .
+      args:
+        http_proxy: http://cisssmcproxy.monteregie.rtss.qc.ca:8080/
+        https_proxy: http://cisssmcproxy.monteregie.rtss.qc.ca:8080/
+        no_proxy: localhost,127.0.0.1,.rtss.qc.ca,10.0.0.0/8,142.85.0.0/16
     container_name: subnet-calculator
     ports:
       - "8080:80"
@@ -13,6 +18,9 @@ services:
       # Mount database file for persistence (optional)
       - ./subnets.db:/var/www/html/subnets.db
     environment:
+      - HTTP_PROXY=http://cisssmcproxy.monteregie.rtss.qc.ca:8080/
+      - HTTPS_PROXY=http://cisssmcproxy.monteregie.rtss.qc.ca:8080/
+      - NO_PROXY=localhost,127.0.0.1,.rtss.qc.ca,10.0.0.0/8,142.85.0.0/16
       - APACHE_DOCUMENT_ROOT=/var/www/html
     restart: unless-stopped
     healthcheck:
