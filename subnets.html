@@ -823,6 +823,7 @@ function submitChangePwd(event) {
   
   fetch('session_api.php', {
     method: 'POST',
+    credentials: 'same-origin',
     body: formData
   })
   .then(response => response.json())
@@ -2143,22 +2144,22 @@ P		{
   <div class="modal-content">
     <div class="modal-header">Changer mon mot de passe</div>
     <div id="changePwdError" style="color:#d32f2f; display:none; margin-bottom:10px;"></div>
-    <form id="changePwdForm" onsubmit="return false;">
+    <form id="changePwdForm" onsubmit="submitChangePwd(event); return false;">
       <div class="form-group">
-        <label for="oldPwd">Ancien mot de passe</label>
-        <input type="password" id="oldPwd" required>
+        <label for="currentPassword">Ancien mot de passe</label>
+        <input type="password" id="currentPassword" required>
       </div>
       <div class="form-group">
-        <label for="newPwd1">Nouveau mot de passe</label>
-        <input type="password" id="newPwd1" required>
+        <label for="newPassword">Nouveau mot de passe</label>
+        <input type="password" id="newPassword" required>
       </div>
       <div class="form-group">
-        <label for="newPwd2">Confirmer nouveau mot de passe</label>
-        <input type="password" id="newPwd2" required>
+        <label for="confirmPassword">Confirmer nouveau mot de passe</label>
+        <input type="password" id="confirmPassword" required>
       </div>
       <div class="button-group">
         <button type="button" class="btn-secondary" onclick="hideChangePwdModal()">Annuler</button>
-        <button type="button" class="btn-primary" onclick="submitChangePwd()">Changer</button>
+        <button type="submit" class="btn-primary">Changer</button>
       </div>
     </form>
   </div>
