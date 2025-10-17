@@ -3,7 +3,7 @@
 require_once 'db_init.php';
 
 $username = 'admin'; // à personnaliser
-$password = 'admin'; // à personnaliser
+$password = 'admin123'; // à personnaliser
 
 $database = new SubnetDatabase(null, true);
 $db = $database->getConnection();
