@@ -1,17 +1,26 @@
 # Subnet Calculator - Production Docker Image
-FROM php:8.2-apache
+FROM php:8.2-apache-bookworm
+
+# Set proxy for build (if needed)
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
 
 # Install required PHP extensions
 RUN apt-get update && apt-get install -y \
-    sqlite3 \
-    libsqlite3-dev \
+    default-mysql-client \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
     libpng-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) gd pdo pdo_sqlite \
+    && docker-php-ext-install -j$(nproc) gd pdo pdo_mysql mysqli \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Unset proxy after installation
+ENV http_proxy=
+ENV https_proxy=
 
 # Enable Apache rewrite module
 RUN a2enmod rewrite
@@ -48,9 +57,6 @@ RewriteRule ^(.*)$ subnets.html [QSA,L]\n\
     Header always set X-XSS-Protection "1; mode=block"\n\
 </IfModule>' > /var/www/html/.htaccess
 
-# Initialize database on container start
-RUN php -r "require_once 'db_init.php'; echo 'Database initialized\\n';"
-
 # Expose port 80
 EXPOSE 80
 
@@ -62,17 +68,19 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-# Ensure database directory and file have correct permissions\n\
-chown -R www-data:www-data /var/www/html\n\
-chmod 664 /var/www/html/subnets.db 2>/dev/null || true\n\
+# Wait for MySQL to be ready\n\
+echo "Waiting for MySQL..."\n\
+while ! mysqladmin ping -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWORD" --silent; do\n\
+    sleep 1\n\
+done\n\
+echo "MySQL is ready!"\n\
 \n\
-# Initialize database if it does not exist or is empty\n\
-if [ ! -s "/var/www/html/subnets.db" ]; then\n\
-    echo "Initializing database..."\n\
-    php -f db_init.php\n\
-    chown www-data:www-data /var/www/html/subnets.db\n\
-    chmod 664 /var/www/html/subnets.db\n\
-fi\n\
+# Ensure correct permissions\n\
+chown -R www-data:www-data /var/www/html\n\
+\n\
+# Initialize database tables if needed\n\
+echo "Initializing database..."\n\
+php -f db_init.php\n\
 \n\
 # Start Apache\n\
 exec apache2-foreground' > /usr/local/bin/docker-entrypoint.sh && \

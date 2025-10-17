@@ -1,7 +1,7 @@
 <?php
 /**
  * Subnet Configuration API
- * Handles saving and loading subnet configurations from SQLite database
+ * Handles saving and loading subnet configurations from MySQL database
  */
 
 // Start output buffering to catch any unwanted output
@@ -25,7 +25,7 @@ class SubnetAPI {
     private $db;
     
     public function __construct() {
-        $database = new SubnetDatabase('subnets.db', true); // Silent mode
+        $database = new SubnetDatabase(null, true); // Silent mode, use environment variables
         $this->db = $database->getConnection();
     }
     
@@ -62,8 +62,25 @@ class SubnetAPI {
         }
     }
     
+    private function authenticateUser($username, $password) {
+        if (empty($username) || empty($password)) {
+            return false;
+        }
+        $stmt = $this->db->prepare("SELECT password_hash FROM users WHERE username = ? LIMIT 1");
+        $stmt->execute([$username]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return false;
+        return password_verify($password, $row['password_hash']);
+    }
+
     private function saveConfiguration() {
         $input = json_decode(file_get_contents('php://input'), true);
+        // Authentification utilisateur requise
+        $username = $input['username'] ?? '';
+        $password = $input['password'] ?? '';
+        if (!$this->authenticateUser($username, $password)) {
+            return $this->sendResponse(false, 'Authentication failed: invalid username or password');
+        }
         
         // Validate required fields
         $requiredFields = ['siteName', 'adminNumber', 'networkAddress', 'maskBits', 'divisionData'];

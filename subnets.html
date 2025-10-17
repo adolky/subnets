@@ -717,6 +717,7 @@ function showSaveDialog() {
 
 function hideSaveDialog() {
   const modal = document.getElementById('saveModal');
+  const authModal = document.getElementById('authModal');
   
   // Reset field states
   const siteNameField = document.getElementById('siteName');
@@ -730,6 +731,11 @@ function hideSaveDialog() {
   networkAddressField.style.backgroundColor = '';
   
   modal.style.display = 'none';
+  authModal.style.display = 'none';
+  
+  // Clear pending data
+  pendingSaveData = null;
+  
   document.getElementById('saveForm').reset();
   document.getElementById('saveStatus').style.display = 'none';
 }
@@ -750,6 +756,9 @@ function showLoadDialog() {
 function hideLoadDialog() {
   document.getElementById('loadModal').style.display = 'none';
 }
+
+// Temporary storage for save data while authenticating
+let pendingSaveData = null;
 
 function saveToDatabase(event) {
   event.preventDefault();
@@ -784,7 +793,8 @@ function saveToDatabase(event) {
   const vlanIds = vlanIdsToString(rootSubnet, curNetwork, curMask);
   const divisionData = binToAscii(nodeToString(rootSubnet));
   
-  const data = {
+  // Store the data for use after authentication
+  pendingSaveData = {
     siteName: siteName,
     adminNumber: adminNumber,
     networkAddress: networkAddress,
@@ -796,8 +806,71 @@ function saveToDatabase(event) {
   
   // Add ID for updates
   if (currentConfig.isLoaded) {
-    data.configId = currentConfig.id;
+    pendingSaveData.configId = currentConfig.id;
   }
+  
+  // Show authentication modal
+  showAuthModal();
+}
+
+function showAuthModal() {
+  // Hide save modal
+  document.getElementById('saveModal').style.display = 'none';
+  
+  // Clear auth form
+  document.getElementById('authUsername').value = '';
+  document.getElementById('authPassword').value = '';
+  document.getElementById('authError').style.display = 'none';
+  
+  // Show auth modal
+  document.getElementById('authModal').style.display = 'flex';
+  
+  // Focus username field
+  setTimeout(() => {
+    document.getElementById('authUsername').focus();
+  }, 100);
+}
+
+function closeAuthModal() {
+  document.getElementById('authModal').style.display = 'none';
+  
+  // Show save modal again
+  document.getElementById('saveModal').style.display = 'flex';
+  
+  // Clear pending data
+  pendingSaveData = null;
+}
+
+function submitWithAuth() {
+  const username = document.getElementById('authUsername').value.trim();
+  const password = document.getElementById('authPassword').value.trim();
+  const authError = document.getElementById('authError');
+  
+  if (!username || !password) {
+    authError.textContent = 'Please enter both username and password';
+    authError.style.display = 'block';
+    return;
+  }
+  
+  // Hide error
+  authError.style.display = 'none';
+  
+  if (!pendingSaveData) {
+    authError.textContent = 'No data to save. Please try again.';
+    authError.style.display = 'block';
+    return;
+  }
+  
+  // Add credentials to data
+  const data = {
+    ...pendingSaveData,
+    username: username,
+    password: password
+  };
+  
+  // Show save modal with loading status
+  document.getElementById('authModal').style.display = 'none';
+  document.getElementById('saveModal').style.display = 'flex';
   
   const statusMessage = currentConfig.isLoaded ? 'Updating configuration...' : 'Saving configuration...';
   showSaveStatus(statusMessage, 'info');
@@ -817,20 +890,32 @@ function saveToDatabase(event) {
       // If this was a new save, update the current config state
       if (!currentConfig.isLoaded) {
         currentConfig = {
-          id: result.data?.id || null, // API should return the ID
-          siteName: siteName,
-          adminNumber: adminNumber,
-          networkAddress: networkAddress,
+          id: result.data?.id || null,
+          siteName: pendingSaveData.siteName,
+          adminNumber: pendingSaveData.adminNumber,
+          networkAddress: pendingSaveData.networkAddress,
           isLoaded: true
         };
         updateUIForLoadedConfig();
       }
       
+      // Clear pending data
+      pendingSaveData = null;
+      
       setTimeout(() => {
         hideSaveDialog();
       }, 2000);
     } else {
-      showSaveStatus(result.message, 'error');
+      // Check if authentication error
+      if (result.message && result.message.toLowerCase().includes('authentication')) {
+        // Show auth modal again with error
+        document.getElementById('saveModal').style.display = 'none';
+        document.getElementById('authModal').style.display = 'flex';
+        authError.textContent = result.message;
+        authError.style.display = 'block';
+      } else {
+        showSaveStatus(result.message, 'error');
+      }
     }
   })
   .catch(error => {
@@ -1898,6 +1983,29 @@ Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> |
       </div>
     </form>
     <div id="saveStatus" style="margin-top: 15px; display: none;"></div>
+  </div>
+</div>
+
+<!-- Authentication Modal -->
+<div id="authModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">Authentication Required</div>
+    <p style="margin: 0 0 20px 0; color: #666;">Please enter your credentials to save or update the configuration.</p>
+    <form id="authForm" onsubmit="return false;">
+      <div class="form-group">
+        <label for="authUsername">Username *</label>
+        <input type="text" id="authUsername" required placeholder="Enter username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="authPassword">Password *</label>
+        <input type="password" id="authPassword" required placeholder="Enter password" autocomplete="current-password">
+      </div>
+      <div id="authError" style="color: #d32f2f; margin-bottom: 15px; display: none; padding: 10px; background-color: #ffebee; border-radius: 4px;"></div>
+      <div class="button-group">
+        <button type="button" class="btn-secondary" onclick="closeAuthModal()">Cancel</button>
+        <button type="button" class="btn-primary" onclick="submitWithAuth()">Login & Save</button>
+      </div>
+    </form>
   </div>
 </div>
 

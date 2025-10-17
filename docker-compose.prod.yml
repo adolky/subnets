@@ -2,21 +2,60 @@
 version: '3.8'
 
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: subnet-mysql-prod
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-subnets}
+      MYSQL_USER: ${MYSQL_USER:-subnets_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - subnet-calculator-prod-network
+
   subnet-calculator:
-    build: .
+    build:
+      context: .
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
     container_name: subnet-calculator-prod
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - subnet_data:/var/www/html/data
-      - ./subnets.db:/var/www/html/subnets.db
       # SSL certificates (optional)
       - ./ssl:/etc/ssl/certs:ro
     environment:
       - APACHE_DOCUMENT_ROOT=/var/www/html
       - SERVER_NAME=${SERVER_NAME:-subnet-calculator.local}
+      - DB_HOST=mysql
+      - DB_NAME=${MYSQL_DATABASE:-subnets}
+      - DB_USER=${MYSQL_USER:-subnets_user}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - DB_PORT=3306
     restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/subnets.html"]
       interval: 60s
@@ -37,11 +76,13 @@ services:
     labels:
       - "com.subnet-calculator.version=1.0"
       - "com.subnet-calculator.description=Advanced Subnet Calculator"
+    networks:
+      - subnet-calculator-prod-network
 
 volumes:
-  subnet_data:
+  mysql_data:
     driver: local
 
 networks:
-  default:
-    name: subnet-calculator-prod-network
+  subnet-calculator-prod-network:
+    driver: bridge

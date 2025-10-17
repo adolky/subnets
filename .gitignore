@@ -1,0 +1,30 @@
+# Environment files
+.env
+
+# Database files
+subnets.db
+subnets.db.backup
+*.db
+*.sql
+
+# Docker volumes
+data/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/

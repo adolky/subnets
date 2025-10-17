@@ -1,6 +1,6 @@
 # 🌐 Advanced Subnet Calculator
 
-A powerful, web-based subnet calculator with visual representation, intelligent IP search, and persistent configuration management. Built with PHP, SQLite, and modern web technologies.
+A powerful, web-based subnet calculator with visual representation, intelligent IP search, and persistent configuration management. Built with PHP, MySQL, and modern web technologies.
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://docker.com/)
 [![PHP](https://img.shields.io/badge/PHP-8.2+-777BB4?logo=php)](https://php.net/)
@@ -17,10 +17,11 @@ A powerful, web-based subnet calculator with visual representation, intelligent 
 - **VLAN Descriptions**: Detailed descriptions for each VLAN (renamed from VLAN Name)
 
 ### 💾 **Database Management**
-- **Persistent Storage**: Save and load subnet configurations with SQLite database
+- **Persistent Storage**: Save and load subnet configurations with MySQL database
 - **Configuration Management**: Create, update, delete, and search saved configurations
 - **Site Organization**: Organize subnets by site name and administrator
 - **Export/Import**: Easy backup and restore of configurations
+- **Scalability**: MySQL handles large numbers of subnet configurations efficiently
 
 ### 🔍 **Intelligent IP Search**
 - **Database-Wide Search**: Search for any IP address across all saved configurations
@@ -62,7 +63,7 @@ The project has been successfully tested and deployed. All features are working 
 - ✅ Subnet calculation engine - Verified with Class A, B, C networks
 - ✅ GIF image generation - Generates 5KB GIF images with subnet details  
 - ✅ Web interface - 36 form elements loaded correctly
-- ✅ Database connectivity - SQLite with PDO working
+- ✅ Database connectivity - MySQL with PDO working
 - ✅ Docker containerization - PHP 8.2-apache with GD extension
 - ✅ Production configuration - Apache rewrite, security headers
 - ✅ Health checks - Container health monitoring enabled
@@ -72,9 +73,9 @@ The project has been successfully tested and deployed. All features are working 
 - **Container Status**: ✅ Healthy and running
 - **Web Interface**: ✅ HTTP 200 on /subnets.html (58,856 bytes)
 - **API Response**: ✅ HTTP 200 on /gennum.php (5,194 byte GIF)
-- **Database**: ✅ SQLite initialized and accessible  
+- **Database**: ✅ MySQL initialized and accessible  
 - **Apache**: ✅ Running with PHP 8.2.29
-- **Extensions**: ✅ GD, PDO, SQLite3 loaded
+- **Extensions**: ✅ GD, PDO, PDO_MySQL loaded
 
 ## 🚀 Quick Start with Docker
 
@@ -90,6 +91,13 @@ The project has been successfully tested and deployed. All features are working 
 git clone https://github.com/adolky/subnets.git
 cd subnets
 
+# Create environment file from template
+cp .env.example .env
+
+# Edit .env file and set secure passwords
+# IMPORTANT: Change MYSQL_ROOT_PASSWORD and MYSQL_PASSWORD!
+nano .env
+
 # Start with Docker Compose (Development)
 docker-compose up -d
 
@@ -101,6 +109,11 @@ open http://localhost:8080
 
 ```bash
 # For production with enhanced security and logging
+# Create and configure .env file with STRONG passwords
+cp .env.example .env
+nano .env
+
+# Start production containers
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
@@ -121,9 +134,9 @@ docker run -d -p 8080:80 --name subnet-calc subnet-calculator
 ## 📦 Manual Installation
 
 ### Requirements
-- PHP 8.2+ with PDO SQLite extension
+- PHP 8.2+ with PDO MySQL extension
 - Web server (Apache/Nginx) 
-- SQLite 3
+- MySQL 5.7+ or MySQL 8.0+
 
 ### Installation Steps
 
@@ -132,8 +145,27 @@ docker run -d -p 8080:80 --name subnet-calc subnet-calculator
 git clone https://github.com/adolky/subnets.git
 cd subnets
 
+# Set up MySQL database
+mysql -u root -p
+CREATE DATABASE subnets;
+CREATE USER 'subnets_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON subnets.* TO 'subnets_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+# Configure database connection
+# Set environment variables or edit db_init.php with your database credentials
+export DB_HOST=localhost
+export DB_NAME=subnets
+export DB_USER=subnets_user
+export DB_PASSWORD=your_password
+export DB_PORT=3306
+
+# Initialize database tables
+php db_init.php
+
 # Set up web server to serve the directory
-# Ensure PHP has write permissions to create subnets.db
+# Ensure PHP has access to MySQL
 
 # Access via web browser
 open http://localhost/subnets.html
@@ -195,25 +227,99 @@ open http://localhost/subnets.html
 |----------|---------|-------------|
 | `SERVER_NAME` | `subnet-calculator.local` | Server hostname |
 | `APACHE_DOCUMENT_ROOT` | `/var/www/html` | Web root directory |
+| `DB_HOST` | `mysql` | MySQL database host |
+| `DB_NAME` | `subnets` | MySQL database name |
+| `DB_USER` | `subnets_user` | MySQL database user |
+| `DB_PASSWORD` | (required) | MySQL database password |
+| `DB_PORT` | `3306` | MySQL database port |
+| `MYSQL_ROOT_PASSWORD` | (required) | MySQL root password |
 
 ### Database Configuration
 
-The application automatically creates and manages an SQLite database (`subnets.db`) with the following structure:
+The application automatically creates and manages a MySQL database with the following structure:
 
 - **subnet_configurations**: Stores network configurations
   - Site name, admin info, network details
   - Division data (encoded subnet tree)
   - VLAN assignments and timestamps
 
+**Note**: For Docker deployments, copy `.env.example` to `.env` and configure your database passwords before starting the containers.
+
+## 🔄 Migrating from SQLite to MySQL
+
+If you have an existing SQLite database (`subnets.db`) and want to migrate to MySQL:
+
+### Step 1: Backup Your Data
+```bash
+# Create a backup of your SQLite database
+cp subnets.db subnets.db.backup
+```
+
+### Step 2: Set Up MySQL
+```bash
+# Copy environment file and configure
+cp .env.example .env
+nano .env  # Set your MySQL passwords
+
+# Start MySQL container
+docker-compose up -d mysql
+
+# Wait for MySQL to be ready
+docker logs -f subnet-mysql
+```
+
+### Step 3: Run Migration Script
+```bash
+# Set environment variables (or they will be read from .env by docker)
+export DB_HOST=localhost
+export DB_NAME=subnets
+export DB_USER=subnets_user
+export DB_PASSWORD=your_password
+export DB_PORT=3306
+
+# Run the migration script
+php migrate_sqlite_to_mysql.php
+```
+
+### Step 4: Start Application
+```bash
+# Start the full application stack
+docker-compose up -d
+
+# Verify everything works
+curl http://localhost:8080/api.php?action=list
+```
+
+### Migration Notes
+- The migration script handles duplicate entries automatically
+- Original SQLite database is not modified during migration
+- You can keep the SQLite backup for safety
+- The script provides detailed output about the migration process
+
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-**Database Permission Errors**
+**Database Connection Errors**
 ```bash
-# Fix file permissions
-chmod 664 subnets.db
-chown www-data:www-data subnets.db  # Linux/Apache
+# Check MySQL is running
+docker ps | grep mysql
+
+# Check database logs
+docker logs subnet-mysql
+
+# Verify environment variables
+docker exec subnet-calculator env | grep DB_
+```
+
+**MySQL Permission Issues**
+```bash
+# Connect to MySQL container
+docker exec -it subnet-mysql mysql -u root -p
+
+# Grant permissions
+GRANT ALL PRIVILEGES ON subnets.* TO 'subnets_user'@'%';
+FLUSH PRIVILEGES;
 ```
 
 **Docker Container Won't Start**
@@ -293,7 +399,7 @@ subnets/
 ├── db_init.php          # Database initialization
 ├── index.php            # Entry point (redirects)
 ├── gennum.php           # Image generation utility
-├── subnets.db           # SQLite database
+├── .env.example         # Environment variables template
 ├── img/                 # Subnet mask images (0.gif - 32.gif)
 ├── Dockerfile           # Docker image definition
 ├── docker-compose.yml   # Development deployment
@@ -303,8 +409,8 @@ subnets/
 
 ### Technology Stack
 - **Frontend**: Vanilla JavaScript, HTML5, CSS3
-- **Backend**: PHP 8.2+ with PDO SQLite
-- **Database**: SQLite 3
+- **Backend**: PHP 8.2+ with PDO MySQL
+- **Database**: MySQL 8.0
 - **Deployment**: Docker, Apache
 - **Image Generation**: GD Library (for subnet visualization)
 
@@ -312,8 +418,8 @@ subnets/
 
 - **Lightweight**: ~500KB total application size
 - **Fast**: Sub-100ms response times for most operations
-- **Scalable**: SQLite handles thousands of subnet configurations
-- **Efficient**: Minimal resource usage, runs on small VPS instances
+- **Scalable**: MySQL handles thousands of subnet configurations efficiently
+- **Efficient**: Minimal resource usage with optimized queries
 
 ## 🔒 Security
 

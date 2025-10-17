@@ -2,19 +2,48 @@
 version: '3.8'
 
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: subnet-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-subnets}
+      MYSQL_USER: ${MYSQL_USER:-subnets_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-subnets_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - subnet-calculator-network
+
   subnet-calculator:
-    build: .
+    build:
+      context: .
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
     container_name: subnet-calculator
     ports:
       - "8080:80"
-    volumes:
-      # Persist database data
-      - subnet_data:/var/www/html/data
-      # Mount database file for persistence (optional)
-      - ./subnets.db:/var/www/html/subnets.db
     environment:
       - APACHE_DOCUMENT_ROOT=/var/www/html
+      - DB_HOST=mysql
+      - DB_NAME=${MYSQL_DATABASE:-subnets}
+      - DB_USER=${MYSQL_USER:-subnets_user}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-subnets_password}
+      - DB_PORT=3306
     restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/subnets.html"]
       interval: 30s
@@ -25,11 +54,13 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.subnet-calculator.rule=Host(`subnet-calculator.local`)"
       - "traefik.http.services.subnet-calculator.loadbalancer.server.port=80"
+    networks:
+      - subnet-calculator-network
 
 volumes:
-  subnet_data:
+  mysql_data:
     driver: local
 
 networks:
-  default:
-    name: subnet-calculator-network
+  subnet-calculator-network:
+    driver: bridge
