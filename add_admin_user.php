@@ -3,7 +3,7 @@
 require_once 'db_init.php';
 
 $username = 'admin'; // à personnaliser
-$password = 'admin123'; // à personnaliser
+$password = 'admin'; // à personnaliser
 
 $database = new SubnetDatabase(null, true);
 $db = $database->getConnection();
@@ -19,9 +19,9 @@ if ($stmt->fetch()) {
 // Hash du mot de passe
 $password_hash = password_hash($password, PASSWORD_DEFAULT);
 
-// Insertion
-$stmt = $db->prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)");
-$stmt->execute([$username, $password_hash]);
+// Insertion avec rôle admin
+$stmt = $db->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin') ON DUPLICATE KEY UPDATE password_hash = ?, role = 'admin'");
+$stmt->execute([$username, $password_hash, $password_hash]);
 
 if ($stmt->rowCount() > 0) {
     echo "Utilisateur admin ajouté avec succès : $username\n";

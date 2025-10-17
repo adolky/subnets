@@ -759,6 +759,73 @@ function hideLoadDialog() {
 
 // Temporary storage for save data while authenticating
 let pendingSaveData = null;
+let currentUser = null;
+
+function checkSession() {
+  return fetch('session_api.php?action=me')
+    .then(r => r.json())
+    .then(result => {
+      if (result.success) {
+        currentUser = { username: result.username, isAdmin: result.is_admin };
+        document.getElementById('userStatus').textContent = 'Connecté : ' + result.username;
+        document.getElementById('logoutBtn').style.display = 'inline-block';
+        return true;
+      } else {
+        currentUser = null;
+        document.getElementById('userStatus').textContent = 'Non connecté';
+        document.getElementById('logoutBtn').style.display = 'none';
+        return false;
+      }
+    });
+}
+
+function logout() {
+  fetch('session_api.php?action=logout', { method: 'POST' })
+    .then(() => {
+      currentUser = null;
+      document.getElementById('userStatus').textContent = 'Non connecté';
+      document.getElementById('logoutBtn').style.display = 'none';
+    });
+}
+
+function submitSaveWithSession() {
+  if (!pendingSaveData) return;
+  document.getElementById('saveModal').style.display = 'flex';
+  const statusMessage = currentConfig.isLoaded ? 'Updating configuration...' : 'Saving configuration...';
+  showSaveStatus(statusMessage, 'info');
+  fetch('api.php?action=save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pendingSaveData)
+  })
+  .then(response => response.json())
+  .then(result => {
+    if (result.success) {
+      showSaveStatus(result.message, 'success');
+      if (!currentConfig.isLoaded) {
+        currentConfig = {
+          id: result.data?.id || null,
+          siteName: pendingSaveData.siteName,
+          adminNumber: pendingSaveData.adminNumber,
+          networkAddress: pendingSaveData.networkAddress,
+          isLoaded: true
+        };
+        updateUIForLoadedConfig();
+      }
+      pendingSaveData = null;
+      setTimeout(() => { hideSaveDialog(); }, 2000);
+    } else {
+      if (result.message && result.message.toLowerCase().includes('not authenticated')) {
+        showAuthModal();
+      } else {
+        showSaveStatus(result.message, 'error');
+      }
+    }
+  })
+  .catch(error => {
+    showSaveStatus('Error saving configuration: ' + error.message, 'error');
+  });
+}
 
 function saveToDatabase(event) {
   event.preventDefault();
@@ -809,8 +876,16 @@ function saveToDatabase(event) {
     pendingSaveData.configId = currentConfig.id;
   }
   
-  // Show authentication modal
-  showAuthModal();
+  // Vérifier session avant d’afficher le modal
+  checkSession().then(isLogged => {
+    if (isLogged) {
+      // Session active, sauvegarde directe
+      submitSaveWithSession();
+    } else {
+      // Demander login
+      showAuthModal();
+    }
+  });
 }
 
 function showAuthModal() {
@@ -1237,60 +1312,25 @@ function updateUIForLoadedConfig() {
     saveLink.textContent = 'Save to Database';
     saveLink.title = 'Save new configuration to database';
     
-    // Hide configuration info
-    configInfo.style.display = 'none';
-  }
-}
-
-// Attach save form handler
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('saveForm').addEventListener('submit', saveToDatabase);
-});
-
-function toggleColumn(cb)
-{
-  var colName = 'col_'+(cb.id.substr(3));
-//  var col = document.getElementById(colName);
-
-  visibleColumns[cb.id.substr(3)] = cb.checked;
-
-//  if (cb.checked) {
-//    col.style.display = 'table-column';
-//    col.style.visibility = 'visible';
-//  }
-//  else {
-//    col.style.display = 'none';
-//    col.style.visibility = 'collapse';
-//  }
-  recreateTables(); /* because IE draws lines all over the place with border-collapse */
-}
-
-// Intelligent IP Address Search Functions
-function handleIPInput(ipAddress) {
-  const resultElement = document.getElementById('ipSearchResult');
-  
-  // Clear previous results
-  resultElement.textContent = '';
-  resultElement.style.color = '#666';
-  
-  if (!ipAddress || ipAddress.trim() === '') {
-    return;
-  }
-  
-  // Show real-time validation
-  if (!isValidIPAddress(ipAddress.trim())) {
-    if (ipAddress.trim().length > 6) { // Only show error if user has typed enough
-      resultElement.textContent = 'Invalid IP format';
-      resultElement.style.color = '#f44336';
-    }
-    return;
-  }
-  
-  // Show that IP is valid and ready to search
-  resultElement.textContent = 'Valid IP - press Enter or click Search';
-  resultElement.style.color = '#2196F3';
-}
-
+    // Authentifier via session_api.php
+    fetch('session_api.php?action=login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    })
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        currentUser = { username: result.username, isAdmin: result.is_admin };
+        document.getElementById('authModal').style.display = 'none';
+        document.getElementById('userStatus').textContent = 'Connecté : ' + result.username;
+        document.getElementById('logoutBtn').style.display = 'inline-block';
+        submitSaveWithSession();
+      } else {
+        authError.textContent = result.message;
+        authError.style.display = 'block';
+      }
+    });
 function isValidIPAddress(ip) {
   const pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
   const match = ip.match(pattern);
@@ -1599,6 +1639,125 @@ function closeIntelligentSearchModal() {
 
 //-->
 </script>
+<script type="text/javascript">
+// --- Gestion utilisateurs (admin) ---
+function showUserAdminModal() {
+  document.getElementById('userAdminModal').style.display = 'flex';
+  document.getElementById('userAdminError').style.display = 'none';
+  loadUserList();
+}
+function hideUserAdminModal() {
+  document.getElementById('userAdminModal').style.display = 'none';
+}
+function loadUserList() {
+  fetch('session_api.php?action=list_users')
+    .then(r => r.json())
+    .then(result => {
+      if (result.success) {
+        renderUserList(result.users);
+      } else {
+        showUserAdminError(result.message||'Erreur chargement utilisateurs');
+      }
+    })
+    .catch(()=>showUserAdminError('Erreur réseau'));
+}
+function renderUserList(users) {
+  let html = '<tr><th>Nom</th><th>Admin</th><th>Action</th></tr>';
+  users.forEach(u => {
+    html += `<tr><td>${u.username}</td><td>${u.is_admin?'Oui':'Non'}</td><td>`;
+    if (u.username!==currentUser.username) {
+      html += `<button onclick=\"deleteUser('${u.username}')\" style=\"color:#d32f2f;\">Supprimer</button>`;
+    } else {
+      html += '<span style=\"color:#888;\">(vous)</span>';
+    }
+    html += '</td></tr>';
+  });
+  document.getElementById('userListTable').innerHTML = html;
+}
+function showUserAdminError(msg) {
+  let e = document.getElementById('userAdminError');
+  e.textContent = msg;
+  e.style.display = 'block';
+}
+document.getElementById('addUserForm').onsubmit = function() {
+  const username = document.getElementById('newUsername').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const isAdmin = document.getElementById('newIsAdmin').checked;
+  if (!username || !password) return showUserAdminError('Remplir tous les champs');
+  fetch('session_api.php?action=add_user', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username,password,is_admin:isAdmin})
+  })
+  .then(r=>r.json())
+  .then(result=>{
+    if(result.success){
+      loadUserList();
+      document.getElementById('newUsername').value='';
+      document.getElementById('newPassword').value='';
+      document.getElementById('newIsAdmin').checked=false;
+      showUserAdminError('');
+    }else{
+      showUserAdminError(result.message||'Erreur ajout utilisateur');
+    }
+  })
+  .catch(()=>showUserAdminError('Erreur réseau'));
+};
+function deleteUser(username) {
+  if (!confirm('Supprimer l’utilisateur '+username+' ?')) return;
+  fetch('session_api.php?action=delete_user', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username})
+  })
+  .then(r=>r.json())
+  .then(result=>{
+    if(result.success){
+      loadUserList();
+      showUserAdminError('');
+    }else{
+      showUserAdminError(result.message||'Erreur suppression');
+    }
+  })
+  .catch(()=>showUserAdminError('Erreur réseau'));
+}
+
+// --- Changement de mot de passe utilisateur ---
+function showChangePwdModal() {
+  document.getElementById('changePwdModal').style.display = 'flex';
+  document.getElementById('changePwdError').style.display = 'none';
+  document.getElementById('oldPwd').value = '';
+  document.getElementById('newPwd1').value = '';
+  document.getElementById('newPwd2').value = '';
+}
+function hideChangePwdModal() {
+  document.getElementById('changePwdModal').style.display = 'none';
+}
+document.getElementById('changePwdForm').onsubmit = function() {
+  const oldPwd = document.getElementById('oldPwd').value;
+  const newPwd1 = document.getElementById('newPwd1').value;
+  const newPwd2 = document.getElementById('newPwd2').value;
+  if (!oldPwd || !newPwd1 || !newPwd2) return showChangePwdError('Remplir tous les champs');
+  if (newPwd1 !== newPwd2) return showChangePwdError('Les nouveaux mots de passe ne correspondent pas');
+  fetch('session_api.php?action=change_password', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({old_password:oldPwd,new_password:newPwd1})
+  })
+  .then(r=>r.json())
+  .then(result=>{
+    if(result.success){
+      hideChangePwdModal();
+      alert('Mot de passe changé avec succès');
+    }else{
+      showChangePwdError(result.message||'Erreur changement mot de passe');
+    }
+  })
+  .catch(()=>showChangePwdError('Erreur réseau'));
+};
+function showChangePwdError(msg) {
+  let e = document.getElementById('changePwdError');
+  e.textContent = msg;
+  e.style.display = 'block';
+}
+</script>
 
 <style type="text/css">
 
@@ -1848,6 +2007,49 @@ P		{
 </style>
 </head>
 <body>
+<div style="position:fixed;top:10px;right:10px;z-index:1000;">
+  <span id="userStatus">Non connecté</span>
+  <button id="logoutBtn" style="display:none;" onclick="logout()">Déconnexion</button>
+  <button id="adminUserBtn" style="display:none; margin-left:10px;" onclick="showUserAdminModal()">Gestion utilisateurs</button>
+  <button id="changePwdBtn" style="display:none; margin-left:10px;" onclick="showChangePwdModal()">Changer mon mot de passe</button>
+
+<!-- Modale gestion utilisateurs (admin) -->
+<div id="userAdminModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">Gestion des utilisateurs</div>
+    <div id="userAdminError" style="color:#d32f2f; display:none; margin-bottom:10px;"></div>
+    <div>
+      <table id="userListTable" style="width:100%; margin-bottom:15px; border-collapse:collapse;"></table>
+    </div>
+    <form id="addUserForm" onsubmit="return false;" style="margin-bottom:10px;">
+      <input type="text" id="newUsername" placeholder="Nom d'utilisateur" required style="width:120px;">
+      <input type="password" id="newPassword" placeholder="Mot de passe" required style="width:120px;">
+      <label><input type="checkbox" id="newIsAdmin"> Admin</label>
+      <button type="submit" class="btn-primary">Ajouter</button>
+    </form>
+    <div class="button-group">
+      <button type="button" class="btn-secondary" onclick="hideUserAdminModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modale changement de mot de passe -->
+<div id="changePwdModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">Changer mon mot de passe</div>
+    <div id="changePwdError" style="color:#d32f2f; display:none; margin-bottom:10px;"></div>
+    <form id="changePwdForm" onsubmit="return false;">
+      <input type="password" id="oldPwd" placeholder="Ancien mot de passe" required style="width:140px;">
+      <input type="password" id="newPwd1" placeholder="Nouveau mot de passe" required style="width:140px;">
+      <input type="password" id="newPwd2" placeholder="Confirmer nouveau" required style="width:140px;">
+      <button type="submit" class="btn-primary">Changer</button>
+    </form>
+    <div class="button-group">
+      <button type="button" class="btn-secondary" onclick="hideChangePwdModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+</div>
 
 <table width="100%">
 <tr valign=top>

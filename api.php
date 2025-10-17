@@ -74,13 +74,11 @@ class SubnetAPI {
     }
 
     private function saveConfiguration() {
-        $input = json_decode(file_get_contents('php://input'), true);
-        // Authentification utilisateur requise
-        $username = $input['username'] ?? '';
-        $password = $input['password'] ?? '';
-        if (!$this->authenticateUser($username, $password)) {
-            return $this->sendResponse(false, 'Authentication failed: invalid username or password');
+        session_start();
+        if (!isset($_SESSION['user_id'])) {
+            return $this->sendResponse(false, 'Not authenticated');
         }
+        $input = json_decode(file_get_contents('php://input'), true);
         
         // Validate required fields
         $requiredFields = ['siteName', 'adminNumber', 'networkAddress', 'maskBits', 'divisionData'];
