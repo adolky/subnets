@@ -109,8 +109,8 @@ function update_user_password(PDO $pdo, string $username, string $newPassword): 
     $stmt->execute([':h' => $hash, ':u' => $username]);
 }
 
-// Actions
-$action = $_GET['action'] ?? '';
+// Actions - support both GET and POST (check POST first for form submissions)
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 try {
     switch ($action) {
@@ -120,15 +120,21 @@ try {
             } else {
                 json_response([
                     'success' => true,
-                    'username' => current_user(),
-                    'is_admin' => is_admin_user(),
+                    'user' => [
+                        'username' => current_user(),
+                        'role' => is_admin_user() ? 'admin' : 'user'
+                    ]
                 ]);
             }
             break;
         }
 
         case 'login': {
+            // Support both JSON body and POST form data
             $body = read_json_body();
+            if (empty($body)) {
+                $body = $_POST;
+            }
             $username = trim((string)($body['username'] ?? ''));
             $password = (string)($body['password'] ?? '');
             if ($username === '' || $password === '') {
@@ -145,10 +151,13 @@ try {
             // Auth OK — initialize session
             $_SESSION['username'] = $username;
             $_SESSION['is_admin'] = ($username === 'admin');
+            $_SESSION['user_id'] = 1; // For api.php compatibility
             json_response([
                 'success' => true,
-                'username' => $username,
-                'is_admin' => $_SESSION['is_admin'] ? true : false,
+                'user' => [
+                    'username' => $username,
+                    'role' => $_SESSION['is_admin'] ? 'admin' : 'user'
+                ]
             ]);
             break;
         }
@@ -176,6 +185,9 @@ try {
         case 'add_user': {
             require_admin();
             $body = read_json_body();
+            if (empty($body)) {
+                $body = $_POST;
+            }
             $username = trim((string)($body['username'] ?? ''));
             $password = (string)($body['password'] ?? '');
             if ($username === '' || $password === '') {
@@ -194,6 +206,9 @@ try {
         case 'delete_user': {
             require_admin();
             $body = read_json_body();
+            if (empty($body)) {
+                $body = $_POST;
+            }
             $username = trim((string)($body['username'] ?? ''));
             if ($username === '') {
                 json_response(['success' => false, 'message' => 'Username required'], 400);
@@ -211,7 +226,10 @@ try {
         case 'change_password': {
             require_auth();
             $body = read_json_body();
-            $old = (string)($body['old_password'] ?? '');
+            if (empty($body)) {
+                $body = $_POST;
+            }
+            $old = (string)($body['current_password'] ?? $body['old_password'] ?? '');
             $new = (string)($body['new_password'] ?? '');
             if ($old === '' || $new === '') {
                 json_response(['success' => false, 'message' => 'Old and new password required'], 400);

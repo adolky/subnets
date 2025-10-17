@@ -1,5 +1,7 @@
+<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <title>Visual Subnet Calculator</title>
 <script language="javascript" type="text/javascript">
 <!--
@@ -596,6 +598,9 @@ function preloadSubnetImages()
 
 function calcOnLoad()
 {
+  // Check authentication status
+  checkSession();
+  
   preloadSubnetImages();
   args = parseQueryString();
   if (args['network'] && args['mask'] && args['division']) {
@@ -653,6 +658,295 @@ function parseQueryString (str)
   return args;
 }
 
+// Authentication functions
+function checkSession() {
+  fetch('session_api.php?action=me', {
+    credentials: 'same-origin' // Include cookies
+  })
+    .then(response => response.json())
+    .then(data => {
+      console.log('Session check response:', data); // Debug log
+      if (data.success) {
+        document.getElementById('userStatus').textContent = 'Connecté: ' + data.user.username;
+        document.getElementById('loginBtn').style.display = 'none';
+        document.getElementById('logoutBtn').style.display = 'inline-block';
+        document.getElementById('changePwdBtn').style.display = 'inline-block';
+        
+        if (data.user.role === 'admin') {
+          document.getElementById('userAdminBtn').style.display = 'inline-block';
+        } else {
+          document.getElementById('userAdminBtn').style.display = 'none';
+        }
+      } else {
+        document.getElementById('userStatus').textContent = 'Non connecté';
+        document.getElementById('loginBtn').style.display = 'inline-block';
+        document.getElementById('logoutBtn').style.display = 'none';
+        document.getElementById('changePwdBtn').style.display = 'none';
+        document.getElementById('userAdminBtn').style.display = 'none';
+      }
+    })
+    .catch(err => {
+      console.error('Session check failed:', err);
+      // On error, show login option
+      document.getElementById('userStatus').textContent = 'Non connecté';
+      document.getElementById('loginBtn').style.display = 'inline-block';
+      document.getElementById('logoutBtn').style.display = 'none';
+      document.getElementById('changePwdBtn').style.display = 'none';
+      document.getElementById('userAdminBtn').style.display = 'none';
+    });
+}
+
+function showLoginModal() {
+  document.getElementById('loginModal').style.display = 'block';
+  document.getElementById('loginUsername').focus();
+}
+
+function hideLoginModal() {
+  document.getElementById('loginModal').style.display = 'none';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+  hideLoginError();
+}
+
+function submitLogin(event) {
+  event.preventDefault();
+  
+  const username = document.getElementById('loginUsername').value;
+  const password = document.getElementById('loginPassword').value;
+  
+  if (!username || !password) {
+    showLoginError('Veuillez remplir tous les champs');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('action', 'login');
+  formData.append('username', username);
+  formData.append('password', password);
+  
+  // Show loading state
+  const submitBtn = document.querySelector('#loginForm button[type="submit"]');
+  const originalText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Connexion...';
+  
+  fetch('session_api.php', {
+    method: 'POST',
+    body: formData,
+    credentials: 'same-origin' // Important: include cookies in request
+  })
+  .then(response => response.json())
+  .then(data => {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+    
+    if (data.success) {
+      hideLoginModal();
+      // Give browser time to set cookies, then check session
+      setTimeout(() => {
+        checkSession();
+      }, 100);
+      alert('Connexion réussie !');
+    } else {
+      showLoginError('Échec de connexion: ' + (data.message || 'Nom d\'utilisateur ou mot de passe incorrect'));
+    }
+  })
+  .catch(err => {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+    showLoginError('Erreur de connexion: ' + err);
+    console.error('Login error:', err);
+  });
+}
+
+function showLoginError(message) {
+  const errorDiv = document.getElementById('loginError');
+  errorDiv.textContent = message;
+  errorDiv.style.display = 'block';
+}
+
+function hideLoginError() {
+  const errorDiv = document.getElementById('loginError');
+  errorDiv.textContent = '';
+  errorDiv.style.display = 'none';
+}
+
+function logout() {
+  fetch('session_api.php?action=logout', {
+    credentials: 'same-origin' // Include cookies
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        alert('Déconnexion réussie !');
+        checkSession();
+      }
+    })
+    .catch(err => {
+      console.error('Logout failed:', err);
+    });
+}
+
+function showChangePwdModal() {
+  document.getElementById('changePwdModal').style.display = 'block';
+  document.getElementById('currentPassword').focus();
+}
+
+function hideChangePwdModal() {
+  document.getElementById('changePwdModal').style.display = 'none';
+  document.getElementById('currentPassword').value = '';
+  document.getElementById('newPassword').value = '';
+  document.getElementById('confirmPassword').value = '';
+}
+
+function submitChangePwd(event) {
+  event.preventDefault();
+  
+  const currentPassword = document.getElementById('currentPassword').value;
+  const newPassword = document.getElementById('newPassword').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+  
+  if (newPassword !== confirmPassword) {
+    alert('New passwords do not match!');
+    return;
+  }
+  
+  if (newPassword.length < 6) {
+    alert('Password must be at least 6 characters long!');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('action', 'change_password');
+  formData.append('current_password', currentPassword);
+  formData.append('new_password', newPassword);
+  
+  fetch('session_api.php', {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert('Password changed successfully!');
+      hideChangePwdModal();
+    } else {
+      alert('Password change failed: ' + data.message);
+    }
+  })
+  .catch(err => {
+    alert('Error: ' + err);
+  });
+}
+
+function showUserAdminModal() {
+  document.getElementById('userAdminModal').style.display = 'block';
+  loadUserList();
+}
+
+function hideUserAdminModal() {
+  document.getElementById('userAdminModal').style.display = 'none';
+  document.getElementById('newUsername').value = '';
+  document.getElementById('newUserPassword').value = '';
+  document.getElementById('newUserRole').value = 'user';
+}
+
+function submitAddUser(event) {
+  event.preventDefault();
+  
+  const username = document.getElementById('newUsername').value;
+  const password = document.getElementById('newUserPassword').value;
+  const role = document.getElementById('newUserRole').value;
+  
+  if (password.length < 6) {
+    alert('Password must be at least 6 characters long!');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('action', 'add_user');
+  formData.append('username', username);
+  formData.append('password', password);
+  formData.append('role', role);
+  
+  fetch('session_api.php', {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert('User added successfully!');
+      document.getElementById('newUsername').value = '';
+      document.getElementById('newUserPassword').value = '';
+      document.getElementById('newUserRole').value = 'user';
+      loadUserList();
+    } else {
+      alert('Failed to add user: ' + data.message);
+    }
+  })
+  .catch(err => {
+    alert('Error: ' + err);
+  });
+}
+
+function loadUserList() {
+  fetch('session_api.php?action=list_users')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        const tbody = document.getElementById('userListTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        
+        data.users.forEach(user => {
+          const row = tbody.insertRow();
+          row.innerHTML = `
+            <td>${user.username}</td>
+            <td>${user.role}</td>
+            <td>${user.created_at}</td>
+            <td>
+              ${user.username !== 'admin' ? 
+                '<button onclick="deleteUser(\'' + user.username + '\')">Delete</button>' : 
+                '<em>Protected</em>'}
+            </td>
+          `;
+        });
+      } else {
+        alert('Failed to load users: ' + data.message);
+      }
+    })
+    .catch(err => {
+      alert('Error: ' + err);
+    });
+}
+
+function deleteUser(username) {
+  if (!confirm('Are you sure you want to delete user "' + username + '"?')) {
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('action', 'delete_user');
+  formData.append('username', username);
+  
+  fetch('session_api.php', {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert('User deleted successfully!');
+      loadUserList();
+    } else {
+      alert('Failed to delete user: ' + data.message);
+    }
+  })
+  .catch(err => {
+    alert('Error: ' + err);
+  });
+}
+
 window.onload = calcOnLoad;
 
 // Database save/load functions
@@ -662,6 +956,27 @@ function showSaveDialog() {
     return;
   }
   
+  // Check if user is authenticated before showing save dialog
+  fetch('session_api.php?action=me')
+    .then(response => response.json())
+    .then(sessionData => {
+      if (!sessionData.success) {
+        // User not authenticated - show login modal instead
+        alert('Please login first to save configurations');
+        showLoginModal();
+        return;
+      }
+      
+      // User is authenticated, show save dialog
+      displaySaveDialog();
+    })
+    .catch(error => {
+      alert('Error checking authentication. Please try again.');
+      console.error('Session check error:', error);
+    });
+}
+
+function displaySaveDialog() {
   const modal = document.getElementById('saveModal');
   const modalHeader = modal.querySelector('.modal-header');
   const siteNameField = document.getElementById('siteName');
@@ -735,6 +1050,7 @@ function hideSaveDialog() {
 }
 
 function showLoadDialog() {
+  // Anyone can load configurations - no authentication required
   document.getElementById('loadModal').style.display = 'block';
   loadConfigurationList();
   
@@ -754,6 +1070,29 @@ function hideLoadDialog() {
 function saveToDatabase(event) {
   event.preventDefault();
   
+  // Check if user is authenticated first
+  fetch('session_api.php?action=me')
+    .then(response => response.json())
+    .then(sessionData => {
+      if (!sessionData.success) {
+        // User not authenticated - show login modal
+        showSaveStatus('Please login first to save configurations', 'error');
+        hideSaveDialog();
+        setTimeout(() => {
+          showLoginModal();
+        }, 500);
+        return;
+      }
+      
+      // User is authenticated, proceed with save
+      performSave();
+    })
+    .catch(error => {
+      showSaveStatus('Error checking authentication: ' + error.message, 'error');
+    });
+}
+
+function performSave() {
   let siteName, adminNumber, networkAddress;
   
   if (currentConfig.isLoaded) {
@@ -1763,6 +2102,84 @@ P		{
 </style>
 </head>
 <body>
+
+<!-- User Session Status Bar -->
+<div style="position:fixed;top:10px;right:10px;z-index:1000;background:#f5f5f5;padding:10px;border-radius:5px;box-shadow:0 2px 5px rgba(0,0,0,0.2);">
+  <span id="userStatus" style="margin-right:10px;font-weight:bold;">Non connecté</span>
+  <button id="loginBtn" onclick="showLoginModal()" style="margin-right:5px;">Se connecter</button>
+  <button id="logoutBtn" style="display:none;margin-right:5px;" onclick="logout()">Déconnexion</button>
+  <button id="changePwdBtn" style="display:none;margin-right:5px;" onclick="showChangePwdModal()">Changer mot de passe</button>
+  <button id="adminUserBtn" style="display:none;" onclick="showUserAdminModal()">Gestion utilisateurs</button>
+</div>
+
+<!-- Login Modal -->
+<div id="loginModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">Connexion</div>
+    <div id="loginError" style="color:#d32f2f; display:none; margin-bottom:10px;"></div>
+    <form id="loginForm" onsubmit="submitLogin(event); return false;">
+      <div class="form-group">
+        <label for="loginUsername">Nom d'utilisateur</label>
+        <input type="text" id="loginUsername" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Mot de passe</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </div>
+      <div class="button-group">
+        <button type="button" class="btn-secondary" onclick="hideLoginModal()">Annuler</button>
+        <button type="submit" class="btn-primary">Se connecter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="changePwdModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">Changer mon mot de passe</div>
+    <div id="changePwdError" style="color:#d32f2f; display:none; margin-bottom:10px;"></div>
+    <form id="changePwdForm" onsubmit="return false;">
+      <div class="form-group">
+        <label for="oldPwd">Ancien mot de passe</label>
+        <input type="password" id="oldPwd" required>
+      </div>
+      <div class="form-group">
+        <label for="newPwd1">Nouveau mot de passe</label>
+        <input type="password" id="newPwd1" required>
+      </div>
+      <div class="form-group">
+        <label for="newPwd2">Confirmer nouveau mot de passe</label>
+        <input type="password" id="newPwd2" required>
+      </div>
+      <div class="button-group">
+        <button type="button" class="btn-secondary" onclick="hideChangePwdModal()">Annuler</button>
+        <button type="button" class="btn-primary" onclick="submitChangePwd()">Changer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- User Admin Modal (Admin only) -->
+<div id="userAdminModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">Gestion des utilisateurs</div>
+    <div id="userAdminError" style="color:#d32f2f; display:none; margin-bottom:10px;"></div>
+    <div>
+      <table id="userListTable" style="width:100%; margin-bottom:15px; border-collapse:collapse;"></table>
+    </div>
+    <form id="addUserForm" onsubmit="return false;" style="margin-bottom:10px;">
+      <h4>Ajouter un utilisateur</h4>
+      <input type="text" id="newUsername" placeholder="Nom d'utilisateur" required style="width:150px;margin-right:5px;">
+      <input type="password" id="newPassword" placeholder="Mot de passe" required style="width:150px;margin-right:5px;">
+      <label><input type="checkbox" id="newIsAdmin"> Admin</label>
+      <button type="button" class="btn-primary" onclick="submitAddUser()">Ajouter</button>
+    </form>
+    <div class="button-group">
+      <button type="button" class="btn-secondary" onclick="hideUserAdminModal()">Fermer</button>
+    </div>
+  </div>
+</div>
 
 <table width="100%">
 <tr valign=top>
