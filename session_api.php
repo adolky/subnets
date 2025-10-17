@@ -176,7 +176,7 @@ try {
 
         case 'list_users': {
             require_admin();
-            $stmt = $pdo->query('SELECT username, created_at FROM users ORDER BY username ASC');
+            $stmt = $pdo->query('SELECT username, role, created_at FROM users ORDER BY username ASC');
             $users = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             json_response(['success' => true, 'users' => $users]);
             break;
