@@ -1506,6 +1506,322 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('saveForm').addEventListener('submit', saveToDatabase);
 });
 
+// ==================== EXPORT FUNCTIONALITY ====================
+
+function showExportMenu() {
+  const menu = document.getElementById('exportDropdownMenu');
+  const btn = document.getElementById('exportBtn');
+  
+  if (menu.style.display === 'block') {
+    menu.style.display = 'none';
+  } else {
+    // Positionner le menu juste en dessous du bouton
+    const rect = btn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = (rect.bottom + 2) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.style.display = 'block';
+  }
+}
+
+// Close export menu when clicking outside
+document.addEventListener('click', function(event) {
+  const exportBtn = document.getElementById('exportBtn');
+  const exportMenu = document.getElementById('exportDropdownMenu');
+  
+  if (exportBtn && exportMenu && !exportBtn.contains(event.target) && !exportMenu.contains(event.target)) {
+    exportMenu.style.display = 'none';
+  }
+});
+
+function exportAllSubnets() {
+  document.getElementById('exportDropdownMenu').style.display = 'none';
+  
+  // Show loading message
+  alert('Export en cours... Récupération de toutes les configurations.');
+  
+  fetch('api.php?action=list')
+    .then(response => response.json())
+    .then(result => {
+      if (result.success && result.data && result.data.length > 0) {
+        // Load each configuration one by one to get detailed subnet data
+        exportDetailedConfigurations(result.data, 'all_subnets');
+      } else {
+        alert('Aucune configuration trouvée à exporter');
+      }
+    })
+    .catch(error => {
+      alert('Erreur lors de la récupération des configurations : ' + error.message);
+      console.error('Export error:', error);
+    });
+}
+
+function exportCurrentSite() {
+  document.getElementById('exportDropdownMenu').style.display = 'none';
+  
+  if (!currentConfig.isLoaded) {
+    alert('Aucun site actuellement chargé. Veuillez d\'abord charger une configuration.');
+    return;
+  }
+  
+  const siteName = currentConfig.siteName;
+  
+  alert('Export en cours... Récupération des configurations du site.');
+  
+  fetch('api.php?action=list')
+    .then(response => response.json())
+    .then(result => {
+      if (result.success && result.data) {
+        // Filter by current site name
+        const siteConfigs = result.data.filter(config => config.site_name === siteName);
+        
+        if (siteConfigs.length > 0) {
+          exportDetailedConfigurations(siteConfigs, `site_${siteName.replace(/\s+/g, '_')}`);
+        } else {
+          alert(`Aucune configuration trouvée pour le site "${siteName}"`);
+        }
+      } else {
+        alert('Aucune configuration trouvée');
+      }
+    })
+    .catch(error => {
+      alert('Erreur lors de la récupération des configurations : ' + error.message);
+      console.error('Export error:', error);
+    });
+}
+
+async function exportDetailedConfigurations(configurations, filenamePrefix) {
+  const allSubnets = [];
+  
+  // Load each configuration to get detailed subnet breakdown
+  for (const config of configurations) {
+    try {
+      const response = await fetch(`api.php?action=load&id=${config.id}`);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        const detailedConfig = result.data;
+        
+        // Parse the network to extract all subnets
+        const subnets = await extractSubnetsFromConfig(detailedConfig);
+        allSubnets.push(...subnets);
+      }
+    } catch (error) {
+      console.error(`Error loading config ${config.id}:`, error);
+    }
+  }
+  
+  if (allSubnets.length > 0) {
+    exportSubnetsToCSV(allSubnets, filenamePrefix);
+  } else {
+    alert('Aucune donnée de sous-réseau à exporter');
+  }
+}
+
+async function extractSubnetsFromConfig(config) {
+  const subnets = [];
+  
+  try {
+    // Parse network address
+    const networkParts = config.network_address.split('/');
+    const networkAddr = networkParts[0];
+    const maskBits = parseInt(networkParts[1]);
+    const networkInt = inet_aton(networkAddr);
+    
+    // If there's division data, we need to parse it
+    if (config.division_data && config.division_data !== '1.0') {
+      // Recreate the subnet tree from division data
+      const divisionBin = asciiToBin(config.division_data);
+      const tree = [0, 0, null, '', ''];  // Initialize tree root
+      
+      if (divisionBin !== '0') {
+        loadNode(tree, divisionBin);
+      }
+      
+      // Load VLAN names if available
+      if (config.vlan_names) {
+        loadVlanNames(config.vlan_names, tree, networkInt, maskBits);
+      }
+      
+      // Load VLAN IDs if available
+      if (config.vlan_ids) {
+        loadVlanIds(config.vlan_ids, tree, networkInt, maskBits);
+      }
+      
+      // Extract all leaf subnets from the tree
+      extractLeavesFromTree(tree, networkInt, maskBits, config, subnets);
+    } else {
+      // No division, just the main network
+      const subnet = {
+        siteName: config.site_name,
+        adminNumber: config.admin_number,
+        networkAddress: config.network_address,
+        subnet: networkAddr + '/' + maskBits,
+        netmask: maskBitsToNetmask(maskBits),
+        firstIP: inet_ntoa(networkInt),
+        lastIP: inet_ntoa(subnet_last_address(networkInt, maskBits)),
+        usableFirst: inet_ntoa(networkInt + 1),
+        usableLast: inet_ntoa(subnet_last_address(networkInt, maskBits) - 1),
+        usableCount: subnet_addresses(maskBits) - 2,
+        totalHosts: subnet_addresses(maskBits),
+        vlanId: '',
+        vlanName: '',
+        createdAt: config.created_at,
+        updatedAt: config.updated_at
+      };
+      subnets.push(subnet);
+    }
+  } catch (error) {
+    console.error('Error extracting subnets:', error);
+    // Fallback to basic info
+    subnets.push({
+      siteName: config.site_name,
+      adminNumber: config.admin_number,
+      networkAddress: config.network_address,
+      subnet: config.network_address,
+      netmask: '',
+      firstIP: '',
+      lastIP: '',
+      usableFirst: '',
+      usableLast: '',
+      usableCount: '',
+      totalHosts: '',
+      vlanId: '',
+      vlanName: '',
+      createdAt: config.created_at,
+      updatedAt: config.updated_at
+    });
+  }
+  
+  return subnets;
+}
+
+function extractLeavesFromTree(node, address, mask, config, subnets) {
+  // If this is a leaf node (no children), add it to the list
+  if (!node[2]) {
+    const subnet = {
+      siteName: config.site_name,
+      adminNumber: config.admin_number,
+      networkAddress: config.network_address,
+      subnet: inet_ntoa(address) + '/' + mask,
+      netmask: maskBitsToNetmask(mask),
+      firstIP: inet_ntoa(address),
+      lastIP: inet_ntoa(subnet_last_address(address, mask)),
+      usableFirst: inet_ntoa(address + 1),
+      usableLast: inet_ntoa(subnet_last_address(address, mask) - 1),
+      usableCount: subnet_addresses(mask) - 2,
+      totalHosts: subnet_addresses(mask),
+      vlanId: node[4] || '',
+      vlanName: node[3] || '',
+      createdAt: config.created_at,
+      updatedAt: config.updated_at
+    };
+    subnets.push(subnet);
+  } else {
+    // Recurse into children
+    extractLeavesFromTree(node[2][0], address, mask + 1, config, subnets);
+    extractLeavesFromTree(node[2][1], address + subnet_addresses(mask + 1), mask + 1, config, subnets);
+  }
+}
+
+function exportSubnetsToCSV(subnets, filenamePrefix) {
+  // CSV Headers
+  const headers = [
+    'Site Name',
+    'Admin Number',
+    'Parent Network',
+    'Subnet',
+    'Netmask',
+    'First IP',
+    'Last IP',
+    'Usable First',
+    'Usable Last',
+    'Usable Count',
+    'Total Hosts',
+    'VLAN ID',
+    'VLAN Name',
+    'Created At',
+    'Updated At'
+  ];
+  
+  // Build CSV content
+  let csvContent = headers.join(',') + '\n';
+  
+  subnets.forEach(subnet => {
+    const row = [
+      escapeCSV(subnet.siteName),
+      escapeCSV(subnet.adminNumber),
+      escapeCSV(subnet.networkAddress),
+      escapeCSV(subnet.subnet),
+      escapeCSV(subnet.netmask),
+      escapeCSV(subnet.firstIP),
+      escapeCSV(subnet.lastIP),
+      escapeCSV(subnet.usableFirst),
+      escapeCSV(subnet.usableLast),
+      escapeCSV(subnet.usableCount),
+      escapeCSV(subnet.totalHosts),
+      escapeCSV(subnet.vlanId),
+      escapeCSV(subnet.vlanName),
+      escapeCSV(subnet.createdAt || ''),
+      escapeCSV(subnet.updatedAt || '')
+    ];
+    csvContent += row.join(',') + '\n';
+  });
+  
+  // Create download
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '_').replace(/-/g, '');
+  const filename = `${filenamePrefix}_${timestamp}.csv`;
+  
+  downloadCSV(csvContent, filename);
+  
+  // Show success message
+  alert(`Export réussi !\n\n${subnets.length} sous-réseau(x) exporté(s) dans ${filename}`);
+}
+
+function maskBitsToNetmask(bits) {
+  const mask = ~((1 << (32 - bits)) - 1);
+  return [
+    (mask >>> 24) & 0xFF,
+    (mask >>> 16) & 0xFF,
+    (mask >>> 8) & 0xFF,
+    mask & 0xFF
+  ].join('.');
+}
+
+function escapeCSV(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  
+  const stringValue = String(value);
+  
+  // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+    return '"' + stringValue.replace(/"/g, '""') + '"';
+  }
+  
+  return stringValue;
+}
+
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  
+  if (navigator.msSaveBlob) {
+    // IE 10+
+    navigator.msSaveBlob(blob, filename);
+  } else {
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}
+
+// ==================== END EXPORT FUNCTIONALITY ====================
+
 function toggleColumn(cb)
 {
   var colName = 'col_'+(cb.id.substr(3));
@@ -2032,6 +2348,16 @@ P		{
   50% { background-color: #ffeb8b; }
 }
 
+/* Export Dropdown Menu Styles */
+#exportDropdownMenu a {
+  transition: background-color 0.2s;
+}
+
+#exportDropdownMenu a:hover {
+  background-color: #f5f5f5;
+  color: #2196F3;
+}
+
 /* Modal Styles */
 .modal {
   display: none;
@@ -2268,7 +2594,19 @@ P		{
 <p>Click below to split and join subnets.<br>
 Save options: <a href="subnets.html" id="saveLink">Bookmark link</a> | 
 <a href="#" id="saveToDbLink" onclick="showSaveDialog(); return false;">Save to Database</a> | 
-<a href="#" id="loadFromDbLink" onclick="showLoadDialog(); return false;">Load from Database</a></p>
+<a href="#" id="loadFromDbLink" onclick="showLoadDialog(); return false;">Load from Database</a> | 
+<a href="#" id="exportBtn" onclick="showExportMenu(); return false;">📥 Export</a>
+</p>
+
+<!-- Export Dropdown Menu (positioned by JavaScript) -->
+<div id="exportDropdownMenu" style="display: none; position: fixed; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1000; min-width: 200px;">
+  <a href="#" onclick="exportAllSubnets(); return false;" style="display: block; padding: 10px 15px; text-decoration: none; color: #333; border-bottom: 1px solid #eee;">
+    <span style="margin-right: 8px;">🌍</span>Tous les sous-réseaux
+  </a>
+  <a href="#" onclick="exportCurrentSite(); return false;" style="display: block; padding: 10px 15px; text-decoration: none; color: #333;">
+    <span style="margin-right: 8px;">🏢</span>Site actuel
+  </a>
+</div>
 
 <div id="currentConfigInfo" style="display: none; background-color: #e8f4fd; border: 1px solid #bee5eb; padding: 10px; margin: 10px 0; border-radius: 3px; font-size: 12px;">
   <strong>Current Configuration:</strong> 
