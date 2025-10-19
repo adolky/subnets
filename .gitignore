@@ -1,14 +1,22 @@
 # Environment files
 .env
+.env.local
+.env.production
 
 # Database files
 subnets.db
 subnets.db.backup
 *.db
 *.sql
+*.sql.gz
+
+# Backups
+backups/
+*.backup
 
 # Docker volumes
 data/
+mysql_data/
 
 # IDE and editor files
 .vscode/
@@ -16,15 +24,71 @@ data/
 *.swp
 *.swo
 *~
+.project
+.classpath
+.settings/
 
 # OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Logs
 *.log
 logs/
+*.log.*
 
 # Temporary files
 tmp/
 temp/
+*.tmp
+*.cache
+
+# Test artifacts
+test_cookies.txt
+cookies.txt
+error_screenshot.png
+screenshots/test_runs/*.png
+all_subnets_*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (si utilisation future)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Documentation build (si Sphinx)
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Backup files
+*.bak
+*.old
+README.md.old
