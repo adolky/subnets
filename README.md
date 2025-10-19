@@ -178,55 +178,57 @@ MYSQL_ROOT_PASSWORD=your_root_password
 
 
 
-## 🚀 Démarrage Rapide# Restart services
+## 🚀 Démarrage Rapide
 
-docker compose restart
+### ⚡ Installation Automatique en Une Ligne (Recommandée)
 
-### Installation Docker (Recommandée)```
+**Linux / macOS / WSL :**
 
+```bash
+curl -sSL https://raw.githubusercontent.com/adolky/subnets/master/install.sh | bash
+```
 
+**Windows PowerShell :**
 
-```bash## 📁 Project Structure
+```powershell
+iwr -useb https://raw.githubusercontent.com/adolky/subnets/master/install.ps1 | iex
+```
 
+**Le script vous demandera :**
+- Environnement : Staging ou Production
+- Nom d'utilisateur admin
+- Mot de passe admin
+
+**✅ Installation complète en moins de 2 minutes !**
+
+📖 **Plus de détails :** [QUICK_INSTALL.md](QUICK_INSTALL.md)
+
+---
+
+### Installation Docker Manuelle
+
+```bash
 # 1. Cloner le repository
+git clone https://github.com/adolky/subnets.git
+cd subnets
 
-git clone https://github.com/adolky/subnets.git```
+# 2. Configurer l'environnement
+cp .env.example .env
+nano .env  # Définir vos mots de passe
 
-cd subnetssubnets/
+# 3. Démarrer l'application
+docker compose up -d
 
-├── subnets.html       # Main application
-
-# 2. Configurer l'environnement├── api.php            # REST API
-
-cp .env.example .env├── session_api.php    # Authentication API
-
-nano .env  # Définir vos mots de passe├── db_init.php        # Database setup
-
-├── add_admin_user.php # Admin user creation
-
-# 3. Démarrer l'application├── index.php          # Entry point
-
-docker compose up -d├── img/               # Subnet mask images
-
-└── docker-compose.yml # Docker configuration
-
-# 4. Créer un utilisateur admin```
-
+# 4. Créer un utilisateur admin
 docker compose exec subnet-calculator php add_admin_user.php
 
-## 📄 License
-
 # 5. Accéder à l'application
-
-# http://localhost:8080MIT License - see [LICENSE.md](LICENSE.md)
-
+# http://localhost:8080
 ```
 
 ---
 
 **C'est tout ! 🎉 Votre IPAM est prêt.**
-
-**Made with ❤️ for network administrators**
 
 ### Configuration Minimale
 

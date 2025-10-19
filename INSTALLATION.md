@@ -4,6 +4,28 @@
 
 ---
 
+## ⚡ Installation Rapide en Une Ligne
+
+**La méthode la plus rapide pour installer Subnet Calculator :**
+
+### Linux / macOS / WSL
+
+```bash
+curl -sSL https://raw.githubusercontent.com/adolky/subnets/master/install.sh | bash
+```
+
+### Windows PowerShell
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/adolky/subnets/master/install.ps1 | iex
+```
+
+**✅ Installation complète en moins de 2 minutes !**
+
+📖 **Pour plus de détails, voir la section [Installation Docker Automatisée](#-installation-automatisée-en-une-ligne-recommandée)**
+
+---
+
 ## 📋 Table des Matières
 
 1. [Prérequis](#-prérequis)
@@ -40,7 +62,54 @@
 
 ## 🐳 Installation Docker (Recommandée)
 
-### Méthode 1 : Installation Standard
+### ⚡ Installation Automatisée en Une Ligne (Recommandée)
+
+**Cette méthode automatise entièrement l'installation : création de la base de données, configuration, déploiement et création de l'utilisateur admin.**
+
+#### Linux / macOS / WSL :
+
+```bash
+curl -sSL https://raw.githubusercontent.com/adolky/subnets/master/install.sh | bash
+```
+
+**Ou si vous avez déjà cloné le repository :**
+
+```bash
+cd subnets && bash install.sh
+```
+
+#### Windows PowerShell :
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/adolky/subnets/master/install.ps1 | iex
+```
+
+**Ou si vous avez déjà cloné le repository :**
+
+```powershell
+cd subnets; .\install.ps1
+```
+
+**Ce que fait le script automatiquement :**
+- ✅ Vérifie les prérequis Docker
+- ✅ Demande le choix entre Staging ou Production
+- ✅ Génère des mots de passe sécurisés pour la base de données
+- ✅ Démarre les conteneurs Docker
+- ✅ Initialise la base de données
+- ✅ Crée l'utilisateur administrateur (avec prompt interactif)
+- ✅ Affiche les informations de connexion
+
+**Avantages :**
+- 🚀 Installation en moins de 2 minutes
+- 🔒 Mots de passe générés automatiquement et sécurisés
+- 🎯 Aucune configuration manuelle requise
+- ✨ Interface interactive et guidée
+
+---
+
+### Méthode Manuelle : Installation Standard
+
+Si vous préférez contrôler chaque étape manuellement :
 
 ```bash
 # 1. Cloner le repository
@@ -63,8 +132,11 @@ MYSQL_ROOT_PASSWORD=VotreMotDePasseRootSecurise123!
 ```
 
 ```bash
-# 4. Démarrer les conteneurs
+# 4. Démarrer les conteneurs (Staging)
 docker compose up -d
+
+# OU pour Production
+docker compose -f docker-compose.prod.yml up -d
 
 # 5. Vérifier les logs
 docker compose logs -f
@@ -74,20 +146,22 @@ docker compose exec subnet-calculator php add_admin_user.php
 ```
 
 Suivez les instructions à l'écran :
+
 - Username: `admin`
 - Password: `VotreMotDePasse!`
 - Role: `admin`
 
 ```bash
 # 7. Accéder à l'application
-# http://localhost:8080
+# Staging: http://localhost:8080
+# Production: http://localhost
 ```
 
 **✅ Installation terminée !**
 
 ---
 
-### Méthode 2 : Installation avec Port Personnalisé
+### Méthode Alternative : Installation avec Port Personnalisé
 
 Si le port 8080 est déjà utilisé :
 
@@ -107,29 +181,6 @@ Puis :
 docker compose up -d
 # Accéder à http://localhost:9090
 ```
-
----
-
-### Méthode 3 : Installation Production
-
-Pour un déploiement en production :
-
-```bash
-# Utiliser le fichier de production
-docker compose -f docker-compose.prod.yml up -d
-
-# Vérifier le statut
-docker compose -f docker-compose.prod.yml ps
-
-# Voir les logs
-docker compose -f docker-compose.prod.yml logs -f
-```
-
-**Différences en production :**
-- Logs persistants dans `/var/log/subnet-calculator/`
-- Restart automatique des conteneurs
-- Performance optimisée
-- Sécurité renforcée
 
 ---
 
